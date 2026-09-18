@@ -253,11 +253,141 @@ tr:last-child td{border-bottom:0}
 @keyframes sobe{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 .offline{position:fixed;top:0;left:0;right:0;background:var(--ambar);color:#3d2f08;text-align:center;padding:9px;font-size:13px;font-weight:700;z-index:130}
 
-/* ---------- aluno (provisório) ---------- */
-.aluno-wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
-.aviso-etapa{background:var(--g1);border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 28px;max-width:400px;text-align:center}
-.aviso-etapa h2{margin:22px 0 10px;font-size:20px}
-.aviso-etapa p{color:var(--text-dim);font-size:15px;margin-bottom:22px}
+/* ==========================================================
+   APP DO ALUNO — mobile-first
+   ========================================================== */
+.aluno-app{
+  max-width:520px;margin:0 auto;min-height:100vh;background:var(--g1);
+  display:flex;flex-direction:column;
+  border-left:1px solid var(--line);border-right:1px solid var(--line);
+}
+.aluno-topo{
+  position:sticky;top:0;z-index:30;background:rgba(255,255,255,.93);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);padding:13px 18px;display:flex;align-items:center;justify-content:space-between;
+}
+.marca-mini{display:flex;align-items:center;gap:10px}
+.marca-mini .mark{width:30px;height:30px;border-radius:9px}
+.marca-mini .mark svg{width:18px;height:18px}
+.marca-mini b{font-size:16px;letter-spacing:1px;font-weight:800}
+.marca-mini b span{color:var(--azul)}
+
+.aluno-corpo{flex:1;padding-bottom:92px}
+.tela-aluno{display:none;padding:18px}
+.tela-aluno.on{display:block;animation:surge .22s}
+.ola-bloco{margin-bottom:20px}
+.ola-bloco h1{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.ola-bloco p{color:var(--text-faint);font-size:14px;margin-top:2px}
+.carregando{color:var(--text-faint);text-align:center;padding:36px 12px;font-size:15px}
+
+/* cartão de treino */
+.treino-card{
+  background:linear-gradient(160deg,var(--g2),var(--g1));border:1px solid var(--line);
+  border-radius:var(--r-lg);padding:20px;margin-bottom:14px;
+}
+.treino-card .topo{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.treino-card h2{font-size:19px;font-weight:800;flex:1;letter-spacing:-.3px}
+.treino-card .resumo{display:flex;gap:18px;margin-bottom:16px}
+.treino-card .resumo div{font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.6px}
+.treino-card .resumo b{display:block;font-size:20px;color:var(--text);font-weight:800;letter-spacing:-.5px}
+.treino-card .lista-previa{font-size:14px;color:var(--text-dim);line-height:1.7;margin-bottom:18px}
+.treino-card .lista-previa span{display:block}
+.vazio-hoje{
+  text-align:center;padding:48px 24px;border:2px dashed var(--line);border-radius:var(--r-lg);color:var(--text-faint);
+}
+.vazio-hoje b{display:block;font-size:17px;color:var(--text);margin-bottom:6px;font-weight:700}
+
+/* execução */
+.exec-topo{
+  position:sticky;top:56px;z-index:25;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);margin:-18px -18px 16px;padding:12px 16px;
+  display:flex;align-items:center;gap:12px;
+}
+.exec-topo .voltar{background:none;border:0;font-size:26px;color:var(--text-dim);cursor:pointer;line-height:1;padding:0 4px}
+.exec-titulo{flex:1;min-width:0}
+.exec-titulo b{display:block;font-size:16px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.exec-titulo span{font-size:12px;color:var(--text-faint)}
+.cronometro{font-size:15px;font-weight:700;color:var(--azul-dim);font-variant-numeric:tabular-nums}
+
+.ex-card{border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px;overflow:hidden;background:var(--g1)}
+.ex-card.pronto{border-color:var(--verde);background:rgba(95,184,122,.045)}
+.ex-cab{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:var(--g2)}
+.ex-card.pronto .ex-cab{background:rgba(95,184,122,.1)}
+.ex-cab .ordem{
+  width:28px;height:28px;border-radius:9px;background:var(--azul-soft);color:var(--azul-dim);
+  display:grid;place-items:center;font-weight:800;font-size:13px;flex-shrink:0;
+}
+.ex-card.pronto .ex-cab .ordem{background:var(--verde);color:#fff}
+.ex-cab .txt{flex:1;min-width:0}
+.ex-cab .txt b{display:block;font-size:15px;font-weight:700}
+.ex-cab .txt span{font-size:12px;color:var(--text-faint)}
+.ex-cab .seta{color:var(--text-faint);font-size:18px;transition:transform .2s}
+.ex-card.aberto .ex-cab .seta{transform:rotate(90deg)}
+.ex-corpo{display:none;padding:14px 16px 16px}
+.ex-card.aberto .ex-corpo{display:block}
+
+.video-ex{width:100%;border-radius:var(--r-sm);background:#000;display:block;margin-bottom:14px;max-height:280px}
+.sem-video-ex{
+  background:var(--g2);border:1px dashed var(--line);border-radius:var(--r-sm);
+  padding:14px;text-align:center;color:var(--text-faint);font-size:13px;margin-bottom:14px;
+}
+.obs-ex{background:var(--azul-soft);border-radius:var(--r-sm);padding:11px 13px;font-size:13px;color:var(--azul-dim);margin-bottom:14px}
+.ultima-vez{font-size:13px;color:var(--text-faint);margin-bottom:10px}
+.ultima-vez b{color:var(--text-dim)}
+
+.serie-linha{display:grid;grid-template-columns:30px 1fr 1fr 46px;gap:8px;align-items:center;margin-bottom:9px}
+.serie-linha .n{font-size:13px;font-weight:700;color:var(--text-faint);text-align:center}
+.serie-linha input{
+  width:100%;background:var(--g2);border:1px solid var(--line);border-radius:9px;color:var(--text);
+  padding:12px 8px;font-family:inherit;font-size:16px;text-align:center;font-variant-numeric:tabular-nums;
+}
+.serie-linha input:focus{outline:none;border-color:var(--azul);background:var(--g1)}
+.serie-linha.feita input{background:rgba(95,184,122,.1);border-color:rgba(95,184,122,.4)}
+.serie-linha .ok{
+  width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--g2);
+  color:var(--text-faint);font-size:18px;cursor:pointer;display:grid;place-items:center;
+}
+.serie-linha.feita .ok{background:var(--verde);border-color:var(--verde);color:#fff}
+.cab-series{display:grid;grid-template-columns:30px 1fr 1fr 46px;gap:8px;margin-bottom:7px}
+.cab-series span{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-faint);text-align:center;font-weight:700}
+.exec-rodape{padding:8px 0 4px}
+
+/* barra de descanso */
+.descanso{
+  position:fixed;bottom:76px;left:50%;transform:translateX(-50%);z-index:60;
+  background:var(--text);color:#fff;border-radius:99px;padding:10px 18px;
+  display:flex;align-items:center;gap:12px;box-shadow:0 8px 26px rgba(20,40,70,.28);
+}
+.descanso #descanso-tempo{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.descanso-txt{font-size:12px;opacity:.7;text-transform:uppercase;letter-spacing:.8px}
+.descanso button{background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:99px;padding:5px 13px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+
+/* navegação inferior */
+.aluno-nav{
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:50;
+  background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid var(--line);
+  display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+}
+.aluno-nav button{
+  flex:1;background:none;border:0;color:var(--text-faint);font-size:11px;font-weight:700;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:4px;padding:7px;border-radius:var(--r-sm);
+}
+.aluno-nav button svg{width:21px;height:21px}
+.aluno-nav button.on{color:var(--azul-dim);background:var(--azul-soft)}
+
+/* histórico */
+.hist-item{border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;margin-bottom:10px;background:var(--g1)}
+.hist-item .linha1{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.hist-item b{font-size:15px;flex:1}
+.hist-item .dados{font-size:13px;color:var(--text-faint)}
+
+/* PSE */
+.pse-grade{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0 6px}
+.pse-grade button{
+  aspect-ratio:1;border:1px solid var(--line);background:var(--g2);border-radius:12px;
+  font-family:inherit;font-size:19px;font-weight:800;color:var(--text-dim);cursor:pointer;
+}
+.pse-grade button.on{background:var(--azul);border-color:var(--azul);color:#fff}
+.pse-legenda{display:flex;justify-content:space-between;font-size:11px;color:var(--text-faint);margin-bottom:6px}
 
 /* ---------- responsivo ---------- */
 @media(max-width:1100px){
