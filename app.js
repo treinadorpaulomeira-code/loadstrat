@@ -21,7 +21,7 @@ const estado = {
   usuario: null,
   perfil: null,
   alunos: [],
-  exercicios: [],
+  exercícios: [],
   treino: { id: null, nome: "", itens: [] },
   filtro: { modo: "grupo", chip: "Todos", busca: "" },
 };
@@ -76,7 +76,7 @@ async function comTratamento(promessa, oQueFalhou) {
     return { ok: true, data };
   } catch (e) {
     console.error(oQueFalhou, e);
-    erro(navigator.onLine ? oQueFalhou + ": " + e.message : "Sem conexao - tente de novo em instantes");
+    erro(navigator.onLine ? oQueFalhou + ": " + e.message : "Sem conexão — tente de novo em instantes");
     return { ok: false, data: null };
   }
 }
@@ -156,7 +156,7 @@ async function entrar() {
     mostrarTela("treinador");
     await iniciarPainel();
   } else {
-    $("#aluno-ola").textContent = "Ola, " + estado.perfil.nome.split(" ")[0] + "!";
+    $("#aluno-ola").textContent = "Olá, " + estado.perfil.nome.split(" ")[0] + "!";
     mostrarTela("aluno");
   }
 }
@@ -218,7 +218,7 @@ async function carregarExercicios() {
   if (!r.ok) return;
   estado.exercicios = r.data ?? [];
   const meus = estado.exercicios.filter((e) => e.owner_id).length;
-  $("#sub-bib").textContent = estado.exercicios.length + " exercicios - " + meus + " criados por voce";
+  $("#sub-bib").textContent = estado.exercicios.length + " exercícios · " + meus + " criados por você";
   desenharLib();
 }
 
@@ -303,7 +303,7 @@ function desenharSeletorAluno() {
 
 $("#btn-novo-aluno").addEventListener("click", () => {
   abrirModal(
-    "<h3>Novo aluno</h3><p class='desc'>Eu crio a conta e gero uma senha temporaria para voce passar ao aluno.</p>" +
+    "<h3>Novo aluno</h3><p class='desc'>Eu crio a conta e gero uma senha temporária para você passar ao aluno.</p>" +
     "<form id='form-aluno'>" +
     "<label class='campo'><span>Nome completo *</span><input id='a-nome' required></label>" +
     "<label class='campo'><span>E-mail *</span><input id='a-email' type='email' required placeholder='aluno@email.com'></label>" +
@@ -358,9 +358,9 @@ async function criarAluno(e) {
 function mostrarCredenciais(d) {
   abrirModal(
     "<h3>Conta criada</h3><p class='desc'>Passe estes dados para " + escapar(d.nome) +
-    ". A senha aparece so desta vez.</p><div class='credencial'>" +
+    ". A senha aparece só desta vez.</p><div class='credencial'>" +
     "<div><span>E-mail</span><b>" + escapar(d.email) + "</b></div>" +
-    "<div><span>Senha temporaria</span><b>" + escapar(d.senha_temporaria) + "</b></div></div>" +
+    "<div><span>Senha temporária</span><b>" + escapar(d.senha_temporaria) + "</b></div></div>" +
     "<div class='acoes'><button class='btn ghost' id='c-copiar'>Copiar</button>" +
     "<button class='btn' id='c-fechar'>Pronto</button></div>");
   $("#c-fechar").addEventListener("click", fecharModal);
@@ -369,7 +369,7 @@ function mostrarCredenciais(d) {
     try {
       await navigator.clipboard.writeText(txt);
       bom("Copiado");
-    } catch { erro("Seu navegador bloqueou a copia - anote manualmente"); }
+    } catch { erro("Seu navegador bloqueou a cópia — anote manualmente"); }
   });
 }
 
@@ -402,7 +402,7 @@ function normalizar(s) {
   return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-function exerciciosFiltrados() {
+function exercíciosFiltrados() {
   const { modo, chip, busca } = estado.filtro;
   return estado.exercicios.filter((ex) => {
     const campo = modo === "grupo" ? ex.grupo : ex.padrao;
@@ -413,16 +413,16 @@ function exerciciosFiltrados() {
 }
 
 function desenharLib() {
-  const lista = exerciciosFiltrados();
+  const lista = exercíciosFiltrados();
   $("#liblist").innerHTML = lista.length
     ? lista.map((ex) => {
         const dentro = estado.treino.itens.some((i) => i.exercise_id === ex.id);
         return "<button class='libitem " + (dentro ? "dentro" : "") + "' data-add='" + ex.id + "'>" +
           "<div class='th " + (ex.video_url ? "" : "semvideo") + "'><svg viewBox='0 0 24 24'><path d='M8 5v14l11-7z'/></svg></div>" +
           "<div><b>" + escapar(ex.nome) + "</b><div class='m'>" + escapar(ex.grupo ?? "-") + " - " + escapar(ex.padrao ?? "-") + "</div></div>" +
-          "<div class='plus'>" + (dentro ? "OK" : "+") + "</div></button>";
+          "<div class='plus'>" + (dentro ? "\u2713" : "+") + "</div></button>";
       }).join("")
-    : "<p class='vazio'>Nenhum exercicio com esse filtro.</p>";
+    : "<p class='vazio'>Nenhum exercício com esse filtro.</p>";
 
   $$("[data-add]").forEach((b) =>
     b.addEventListener("click", () => adicionarExercicio(b.dataset.add)));
@@ -432,7 +432,7 @@ function adicionarExercicio(id) {
   const ex = estado.exercicios.find((e) => e.id === id);
   if (!ex) return;
   if (estado.treino.itens.some((i) => i.exercise_id === id))
-    return aviso(ex.nome + " ja esta no treino");
+    return aviso(ex.nome + " já está no treino");
 
   estado.treino.itens.push({
     exercise_id: ex.id,
@@ -457,20 +457,20 @@ function desenharTreino() {
       "<tr><td class='sn'>" + (j + 1) + "</td>" +
       "<td><input value='" + escapar(s.carga_alvo) + "' placeholder='-' inputmode='decimal' data-campo='carga_alvo' data-i='" + i + "' data-j='" + j + "'></td>" +
       "<td><input value='" + escapar(s.reps_alvo) + "' placeholder='-' inputmode='numeric' data-campo='reps_alvo' data-i='" + i + "' data-j='" + j + "'></td>" +
-      "<td><button class='rm' data-rmserie='" + i + ":" + j + "' title='Remover serie'>x</button></td></tr>"
+      "<td><button class='rm' data-rmserie='" + i + ":" + j + "' title='Remover série'>×</button></td></tr>"
     ).join("");
 
     return "<div class='exblock'><div class='exhd'>" +
-      "<button class='mover' data-subir='" + i + "' title='Subir'" + (i === 0 ? " disabled" : "") + ">^</button>" +
-      "<button class='mover' data-descer='" + i + "' title='Descer'" + (i === estado.treino.itens.length - 1 ? " disabled" : "") + ">v</button>" +
+      "<button class='mover' data-subir='" + i + "' title='Subir'" + (i === 0 ? " disabled" : "") + ">↑</button>" +
+      "<button class='mover' data-descer='" + i + "' title='Descer'" + (i === estado.treino.itens.length - 1 ? " disabled" : "") + ">↓</button>" +
       "<span class='nm'>" + escapar(item.nome) + "</span>" +
       "<select data-metodo='" + i + "'>" +
       METODOS.map((m) => "<option" + (item.metodo === m ? " selected" : "") + ">" + m + "</option>").join("") +
-      "</select><button class='del' data-rmex='" + i + "' title='Remover exercicio'>x</button></div>" +
+      "</select><button class='del' data-rmex='" + i + "' title='Remover exercício'>×</button></div>" +
       "<div class='exbd'><table class='setgrid'><thead><tr><th style='width:34px'>#</th><th>" +
       (eTempo ? "Intensidade" : "Carga (kg)") + "</th><th>" + (eTempo ? "Tempo (min)" : "Reps") +
       "</th><th style='width:34px'></th></tr></thead><tbody>" + linhas + "</tbody></table>" +
-      "<button class='btn ghost sm' data-addserie='" + i + "' style='margin-top:8px'>+ Serie</button>" +
+      "<button class='btn ghost sm' data-addserie='" + i + "' style='margin-top:8px'>+ Série</button>" +
       "<div class='rest-in'>Descanso <input value='" + item.descanso_s + "' inputmode='numeric' data-descanso='" + i + "'> seg</div></div></div>";
   }).join("");
 
@@ -574,8 +574,8 @@ async function salvarTreino(status) {
   estado.treino.id = conf.data.id;
 
   bom(status === "publicado"
-    ? "Publicado para " + nomeAluno(alunoId) + " - " + qtd + " exercicios"
-    : "Rascunho salvo - " + qtd + " exercicios");
+    ? "Publicado para " + nomeAluno(alunoId) + " - " + qtd + " exercícios"
+    : "Rascunho salvo - " + qtd + " exercícios");
 
   await carregarResumo();
   if (status === "publicado") limparTreino();
@@ -629,7 +629,7 @@ function desenharBiblioteca() {
       "<div class='card-ex'><div class='thumb'>" +
       (ex.video_url
         ? "<video src='" + escapar(ex.video_url) + "' controls preload='metadata' playsinline></video>"
-        : "<div class='semvid'>sem video</div>") +
+        : "<div class='semvid'>sem vídeo</div>") +
       (ex.owner_id ? "<span class='tag-meu'>meu</span>" : "") +
       "</div><div class='info'><b>" + escapar(ex.nome) + "</b><div class='mini'>" +
       escapar(ex.grupo ?? "-") + " - " + escapar(ex.padrao ?? "-") + " - " + escapar(ex.categoria) +
@@ -637,7 +637,7 @@ function desenharBiblioteca() {
       "<button class='btn ghost sm' data-video='" + ex.id + "'>" + (ex.video_url ? "Trocar vídeo" : "Enviar vídeo") + "</button>" +
       (ex.owner_id ? "<button class='btn perigo sm' data-apagar='" + ex.id + "'>Apagar</button>" : "") +
       "</div></div>").join("")
-    : "<p class='vazio'>Nenhum exercicio com esse filtro.</p>";
+    : "<p class='vazio'>Nenhum exercício com esse filtro.</p>";
 
   $$("[data-video]").forEach((b) =>
     b.addEventListener("click", () => enviarVideo(b.dataset.video)));
@@ -647,20 +647,20 @@ function desenharBiblioteca() {
 
 $("#btn-novo-ex").addEventListener("click", () => {
   abrirModal(
-    "<h3>Novo exercicio</h3><p class='desc'>Fica so na sua biblioteca - nenhum outro treinador ve.</p>" +
+    "<h3>Novo exercício</h3><p class='desc'>Fica só na sua biblioteca — nenhum outro treinador vê.</p>" +
     "<form id='form-ex'><label class='campo'><span>Nome *</span><input id='e-nome' required></label>" +
     "<div class='linha'><label class='campo'><span>Grupo muscular</span><select id='e-grupo'>" +
     GRUPOS.filter((g) => g !== "Todos").map((g) => "<option>" + g + "</option>").join("") +
-    "</select></label><label class='campo'><span>Padrao de movimento</span><select id='e-padrao'>" +
+    "</select></label><label class='campo'><span>Padrão de movimento</span><select id='e-padrao'>" +
     PADROES.filter((p) => p !== "Todos").map((p) => "<option>" + p + "</option>").join("") +
     "</select></label></div>" +
     "<label class='campo'><span>Tipo</span><select id='e-categoria'>" +
-    "<option value='forca'>Forca (carga x repeticoes)</option>" +
-    "<option value='tempo'>Tempo / cardio (duracao)</option></select></label>" +
-    "<label class='campo'><span>Observacao tecnica</span><textarea id='e-obs' rows='2' placeholder='Pontos de atencao na execucao'></textarea></label>" +
+    "<option value='forca'>Força (carga × repetições)</option>" +
+    "<option value='tempo'>Tempo / cardio (duração)</option></select></label>" +
+    "<label class='campo'><span>Observação técnica</span><textarea id='e-obs' rows='2' placeholder='Pontos de atenção na execução'></textarea></label>" +
     "<div id='e-erro' class='erro' hidden></div>" +
     "<div class='acoes'><button type='button' class='btn ghost' id='e-cancelar'>Cancelar</button>" +
-    "<button type='submit' class='btn' id='e-salvar'>Criar exercicio</button></div></form>");
+    "<button type='submit' class='btn' id='e-salvar'>Criar exercício</button></div></form>");
   $("#e-cancelar").addEventListener("click", fecharModal);
   $("#form-ex").addEventListener("submit", criarExercicio);
 });
@@ -695,8 +695,8 @@ async function criarExercicio(e) {
 async function apagarExercicio(id) {
   const ex = estado.exercicios.find((e) => e.id === id);
   abrirModal(
-    "<h3>Apagar exercicio?</h3><p class='desc'>" + escapar(ex?.nome ?? "") +
-    " sai da sua biblioteca. Treinos ja prescritos nao mudam.</p>" +
+    "<h3>Apagar exercício?</h3><p class='desc'>" + escapar(ex?.nome ?? "") +
+    " sai da sua biblioteca. Treinos já prescritos não mudam.</p>" +
     "<div class='acoes'><button class='btn ghost' id='x-nao'>Cancelar</button>" +
     "<button class='btn perigo' id='x-sim'>Apagar</button></div>");
   $("#x-nao").addEventListener("click", fecharModal);
@@ -716,12 +716,12 @@ function enviarVideo(exId) {
   const ex = estado.exercicios.find((e) => e.id === exId);
   abrirModal(
     "<h3>Video de " + escapar(ex?.nome ?? "") + "</h3>" +
-    "<p class='desc'>Ate " + MAX_VIDEO_MB + " MB, em MP4, MOV ou WEBM. O video vai para o Storage - no banco fica so o endereco dele.</p>" +
+    "<p class='desc'>Até " + MAX_VIDEO_MB + " MB, em MP4, MOV ou WEBM. O vídeo vai para o Storage — no banco fica só o endereço dele.</p>" +
     "<label class='campo'><span>Arquivo</span><input type='file' id='v-arquivo' accept='video/mp4,video/quicktime,video/webm'></label>" +
     "<div id='v-erro' class='erro' hidden></div>" +
     "<div id='v-prog' hidden><div class='mini' id='v-status'>Enviando...</div><div class='barra-prog'><i id='v-barra'></i></div></div>" +
     "<div class='acoes'><button class='btn ghost' id='v-cancelar'>Cancelar</button>" +
-    "<button class='btn' id='v-enviar'>Enviar video</button></div>");
+    "<button class='btn' id='v-enviar'>Enviar vídeo</button></div>");
 
   $("#v-cancelar").addEventListener("click", fecharModal);
   $("#v-enviar").addEventListener("click", () => executarUpload(exId));
@@ -737,8 +737,8 @@ async function executarUpload(exId) {
 
   const mb = arquivo.size / 1048576;
   if (mb > MAX_VIDEO_MB) {
-    cErro.innerHTML = "Esse video tem " + mb.toFixed(0) + " MB e o limite e " + MAX_VIDEO_MB + " MB.<br>" +
-      "Grave em resolucao menor (720p ja basta para demonstracao) ou corte o trecho essencial.";
+    cErro.innerHTML = "Esse vídeo tem " + mb.toFixed(0) + " MB e o limite e " + MAX_VIDEO_MB + " MB.<br>" +
+      "Grave em resolução menor (720p já basta para demonstração) ou corte o trecho essencial.";
     cErro.hidden = false;
     return;
   }
