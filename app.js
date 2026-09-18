@@ -12,9 +12,9 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 
-const GRUPOS = ["Todos","Peito","Costas","Ombro","Bracos","Pernas","Gluteo","Core","Cardio"];
-const PADROES = ["Todos","Empurrar","Puxar","Agachar","Dobradica","Avanco","Rotacao","Anti-rotacao","Arremesso","Locomocao","Mobilidade"];
-const METODOS = ["normal","bi-set","super-serie","drop-set","piramide"];
+const GRUPOS = ["Todos","Peito","Costas","Ombro","Braços","Pernas","Glúteo","Core","Cardio"];
+const PADROES = ["Todos","Empurrar","Puxar","Agachar","Dobradiça","Avanço","Rotação","Anti-rotação","Arremesso","Locomoção","Mobilidade"];
+const METODOS = ["normal","bi-set","super-série","drop-set","pirâmide"];
 const MAX_VIDEO_MB = 50;
 
 const estado = {
@@ -84,7 +84,7 @@ async function comTratamento(promessa, oQueFalhou) {
 function estadoRede() {
   $("#offline").hidden = navigator.onLine;
 }
-window.addEventListener("online", () => { estadoRede(); bom("Conexao restabelecida"); });
+window.addEventListener("online", () => { estadoRede(); bom("Conexão restabelecida"); });
 window.addEventListener("offline", estadoRede);
 
 $("#form-login").addEventListener("submit", async (e) => {
@@ -108,7 +108,7 @@ $("#form-login").addEventListener("submit", async (e) => {
     caixaErro.textContent = m.includes("invalid")
       ? "E-mail ou senha incorretos."
       : m.includes("failed to fetch")
-      ? "Nao consegui falar com o servidor. Confira sua internet."
+      ? "Não consegui falar com o servidor. Confira sua internet."
       : error.message;
     caixaErro.hidden = false;
     return;
@@ -121,7 +121,7 @@ $("#btn-esqueci").addEventListener("click", async () => {
   if (!email) return erro("Escreva seu e-mail no campo acima primeiro");
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href });
   if (error) return erro(error.message);
-  bom("Se existir conta com esse e-mail, o link de redefinicao foi enviado");
+  bom("Se existir conta com esse e-mail, o link de redefinição foi enviado");
 });
 
 async function sair() {
@@ -147,7 +147,7 @@ async function entrar() {
 
   const r = await comTratamento(
     sb.from("profiles").select("*").eq("id", estado.usuario.id).single(),
-    "Nao consegui carregar seu perfil"
+    "Não consegui carregar seu perfil"
   );
   if (!r.ok) return mostrarTela("login");
   estado.perfil = r.data;
@@ -193,7 +193,7 @@ async function carregarAlunos() {
       .select("id, ativo, aluno:profiles!students_aluno_id_fkey(id,nome,sexo,peso_kg,objetivo,esporte)")
       .eq("treinador_id", estado.usuario.id)
       .eq("ativo", true),
-    "Nao consegui carregar seus alunos"
+    "Não consegui carregar seus alunos"
   );
   if (!r.ok) return;
   estado.alunos = (r.data ?? []).map((v) => v.aluno).filter(Boolean)
@@ -213,7 +213,7 @@ async function carregarAlunos() {
 async function carregarExercicios() {
   const r = await comTratamento(
     sb.from("exercises").select("*").order("nome"),
-    "Nao consegui carregar a biblioteca"
+    "Não consegui carregar a biblioteca"
   );
   if (!r.ok) return;
   estado.exercicios = r.data ?? [];
@@ -228,7 +228,7 @@ async function carregarResumo() {
       .select("id,nome,data,status,aluno_id")
       .order("criado_em", { ascending: false })
       .limit(8),
-    "Nao consegui carregar os treinos"
+    "Não consegui carregar os treinos"
   );
   $("#st-alunos").textContent = estado.alunos.length;
   $("#st-videos").textContent = estado.exercicios.filter((e) => e.video_url).length;
@@ -348,7 +348,7 @@ async function criarAluno(e) {
     await carregarResumo();
     mostrarCredenciais(payload);
   } catch (err) {
-    cErro.textContent = err.message || "Nao consegui criar a conta";
+    cErro.textContent = err.message || "Não consegui criar a conta";
     cErro.hidden = false;
     btn.disabled = false;
     btn.textContent = "Criar conta do aluno";
@@ -538,7 +538,7 @@ $("#in-nome-treino").addEventListener("input", (e) => { estado.treino.nome = e.t
 async function salvarTreino(status) {
   const alunoId = $("#sel-aluno").value;
   if (!alunoId) return erro("Cadastre um aluno antes de prescrever");
-  if (!estado.treino.itens.length) return erro("Adicione ao menos um exercicio");
+  if (!estado.treino.itens.length) return erro("Adicione ao menos um exercício");
 
   const nome = ($("#in-nome-treino").value || "").trim() ||
     ("Treino de " + new Date().toLocaleDateString("pt-BR"));
@@ -557,17 +557,17 @@ async function salvarTreino(status) {
   const r = estado.treino.id
     ? await comTratamento(
         sb.from("workouts").update(registro).eq("id", estado.treino.id).select().single(),
-        "Nao consegui salvar o treino")
+        "Não consegui salvar o treino")
     : await comTratamento(
         sb.from("workouts").insert(registro).select().single(),
-        "Nao consegui salvar o treino");
+        "Não consegui salvar o treino");
 
   botoes.forEach((b) => (b.disabled = false));
   if (!r.ok) return;
 
   const conf = await comTratamento(
     sb.from("workouts").select("id,nome,status,estrutura").eq("id", r.data.id).single(),
-    "Salvei, mas nao consegui reler para confirmar");
+    "Salvei, mas não consegui reler para confirmar");
   if (!conf.ok) return;
 
   const qtd = Array.isArray(conf.data.estrutura) ? conf.data.estrutura.length : 0;
@@ -593,7 +593,7 @@ function limparTreino() {
 async function abrirTreino(id) {
   const r = await comTratamento(
     sb.from("workouts").select("*").eq("id", id).single(),
-    "Nao consegui abrir o treino");
+    "Não consegui abrir o treino");
   if (!r.ok) return;
   estado.treino = {
     id: r.data.id,
@@ -634,7 +634,7 @@ function desenharBiblioteca() {
       "</div><div class='info'><b>" + escapar(ex.nome) + "</b><div class='mini'>" +
       escapar(ex.grupo ?? "-") + " - " + escapar(ex.padrao ?? "-") + " - " + escapar(ex.categoria) +
       "</div></div><div class='acoes-ex'>" +
-      "<button class='btn ghost sm' data-video='" + ex.id + "'>" + (ex.video_url ? "Trocar video" : "Enviar video") + "</button>" +
+      "<button class='btn ghost sm' data-video='" + ex.id + "'>" + (ex.video_url ? "Trocar vídeo" : "Enviar vídeo") + "</button>" +
       (ex.owner_id ? "<button class='btn perigo sm' data-apagar='" + ex.id + "'>Apagar</button>" : "") +
       "</div></div>").join("")
     : "<p class='vazio'>Nenhum exercicio com esse filtro.</p>";
@@ -680,10 +680,10 @@ async function criarExercicio(e) {
       categoria: $("#e-categoria").value,
       obs: $("#e-obs").value.trim() || null,
     }).select().single(),
-    "Nao consegui criar o exercicio");
+    "Não consegui criar o exercício");
 
   btn.disabled = false;
-  btn.textContent = "Criar exercicio";
+  btn.textContent = "Criar exercício";
   if (!r.ok) return;
 
   fecharModal();
@@ -703,12 +703,12 @@ async function apagarExercicio(id) {
   $("#x-sim").addEventListener("click", async () => {
     const r = await comTratamento(
       sb.from("exercises").delete().eq("id", id),
-      "Nao consegui apagar");
+      "Não consegui apagar");
     fecharModal();
     if (!r.ok) return;
     await carregarExercicios();
     desenharBiblioteca();
-    bom("Exercicio apagado");
+    bom("Exercício apagado");
   });
 }
 
@@ -743,7 +743,7 @@ async function executarUpload(exId) {
     return;
   }
   if (!/^video\/(mp4|quicktime|webm)$/.test(arquivo.type)) {
-    cErro.textContent = "Formato nao aceito. Use MP4, MOV ou WEBM.";
+    cErro.textContent = "Formato não aceito. Use MP4, MOV ou WEBM.";
     cErro.hidden = false;
     return;
   }
@@ -760,7 +760,7 @@ async function executarUpload(exId) {
     sb.storage.from("exercise-videos").upload(caminho, arquivo, {
       contentType: arquivo.type, upsert: false,
     }),
-    "Falha no envio do video");
+    "Falha no envio do vídeo");
 
   if (!up.ok) { btn.disabled = false; $("#v-prog").hidden = true; return; }
 
@@ -772,7 +772,7 @@ async function executarUpload(exId) {
 
   const r = await comTratamento(
     sb.from("exercises").update({ video_url: url }).eq("id", exId).select().single(),
-    "O video subiu, mas nao consegui liga-lo ao exercicio");
+    "O vídeo subiu, mas não consegui ligá-lo ao exercício");
 
   if (!r.ok) {
     await sb.storage.from("exercise-videos").remove([caminho]);
@@ -786,7 +786,7 @@ async function executarUpload(exId) {
   await carregarExercicios();
   desenharBiblioteca();
   await carregarResumo();
-  bom("Video publicado");
+  bom("Vídeo publicado");
 }
 
 estadoRede();
@@ -796,5 +796,5 @@ sb.auth.onAuthStateChange((evento) => {
 entrar().catch((e) => {
   console.error(e);
   mostrarTela("login");
-  erro("Nao consegui iniciar o app. Recarregue a pagina.");
+  erro("Não consegui iniciar o app. Recarregue a página.");
 });
