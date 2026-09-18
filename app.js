@@ -21,7 +21,7 @@ const estado = {
   usuario: null,
   perfil: null,
   alunos: [],
-  exercícios: [],
+  exercicios: [],
   treino: { id: null, nome: "", itens: [] },
   filtro: { modo: "grupo", chip: "Todos", busca: "" },
 };
@@ -156,8 +156,8 @@ async function entrar() {
     mostrarTela("treinador");
     await iniciarPainel();
   } else {
-    $("#aluno-ola").textContent = "Olá, " + estado.perfil.nome.split(" ")[0] + "!";
     mostrarTela("aluno");
+    await iniciarAluno();
   }
 }
 
@@ -798,3 +798,448 @@ entrar().catch((e) => {
   mostrarTela("login");
   erro("Não consegui iniciar o app. Recarregue a página.");
 });
+
+/* =========================================================
+   APP DO ALUNO
+   Registro serie a serie no estilo Treino.io: o aluno preenche
+   carga e reps de cada serie, marca como concluida, e cada serie
+   e gravada na hora. Numero de carga interna nenhum aparece aqui.
+   ========================================================= */
+const al = {
+  treinos: [],
+  exercicios: {},
+  treino: null,
+  sessao: null,
+  itens: [],
+  ultimas: {},
+  inicio: null,
+  relogio: null,
+  descanso: null,
+  salvando: 0,
+};
+
+async function iniciarAluno() {
+  const primeiro = estado.perfil.nome.split(" ")[0];
+  $("#aluno-ola").textContent = "Olá, " + primeiro;
+  $("#aluno-data").textContent = new Date().toLocaleDateString("pt-BR", {
+    weekday: "long", day: "numeric", month: "long",
+  });
+  await carregarBibliotecaAluno();
+  await carregarTreinosAluno();
+}
+
+function telaAluno(qual) {
+  $$(".tela-aluno").forEach((s) => s.classList.toggle("on", s.dataset.tela === qual));
+  $$("[data-tela-nav]").forEach((b) => b.classList.toggle("on", b.dataset.telaNav === qual));
+  $("#aluno-nav").hidden = qual === "executar";
+  $("#aluno-corpo").scrollTo(0, 0);
+  window.scrollTo(0, 0);
+  if (qual === "historico") carregarHistoricoAluno();
+}
+$$("[data-tela-nav]").forEach((b) =>
+  b.addEventListener("click", () => telaAluno(b.dataset.telaNav)));
+
+async function carregarBibliotecaAluno() {
+  const r = await comTratamento(
+    sb.from("exercises").select("id,nome,grupo,padrao,categoria,video_url,obs"),
+    "Não consegui carregar os exercícios");
+  if (!r.ok) return;
+  al.exercicios = {};
+  (r.data ?? []).forEach((e) => (al.exercicios[e.id] = e));
+}
+
+async function carregarTreinosAluno() {
+  const r = await comTratamento(
+    sb.from("workouts").select("id,nome,data,estrutura,status")
+      .eq("status", "publicado").order("data", { ascending: false }).limit(10),
+    "Não consegui carregar seus treinos");
+  if (!r.ok) return;
+  al.treinos = (r.data ?? []).filter((t) => Array.isArray(t.estrutura) && t.estrutura.length);
+  desenharTreinosHoje();
+}
+
+function desenharTreinosHoje() {
+  const alvo = $("#lista-treinos");
+  if (!al.treinos.length) {
+    alvo.innerHTML =
+      "<div class='vazio-hoje'><b>Nenhum treino por aqui ainda</b>" +
+      "Assim que seu treinador publicar, ele aparece nesta tela.</div>";
+    return;
+  }
+  const hoje = new Date().toISOString().slice(0, 10);
+  alvo.innerHTML = al.treinos.map((t) => {
+    const series = t.estrutura.reduce((s, e) => s + (e.series?.length ?? 0), 0);
+    const min = Math.round(t.estrutura.reduce(
+      (s, e) => s + (e.series?.length ?? 0) * ((parseInt(e.descanso_s) || 0) + 45), 0) / 60);
+    const previa = t.estrutura.slice(0, 4)
+      .map((e) => "<span>• " + escapar(e.nome) + " — " + (e.series?.length ?? 0) + "×</span>").join("");
+    const resto = t.estrutura.length > 4
+      ? "<span>e mais " + (t.estrutura.length - 4) + "</span>" : "";
+    return "<div class='treino-card'><div class='topo'><h2>" + escapar(t.nome) + "</h2>" +
+      (t.data === hoje ? "<span class='pill azul'>hoje</span>"
+        : "<span class='pill'>" + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"}) + "</span>") +
+      "</div><div class='resumo'><div>Exercícios<b>" + t.estrutura.length + "</b></div>" +
+      "<div>Séries<b>" + series + "</b></div><div>Tempo<b>" + min + "min</b></div></div>" +
+      "<div class='lista-previa'>" + previa + resto + "</div>" +
+      "<button class='btn bloco' data-comecar='" + t.id + "'>Começar treino</button></div>";
+  }).join("");
+
+  $$("[data-comecar]").forEach((b) =>
+    b.addEventListener("click", () => comecarTreino(b.dataset.comecar)));
+}
+
+/* ---------- abrir a sessão ---------- */
+async function comecarTreino(workoutId) {
+  const treino = al.treinos.find((t) => t.id === workoutId);
+  if (!treino) return;
+
+  const btn = document.querySelector("[data-comecar='" + workoutId + "']");
+  if (btn) { btn.disabled = true; btn.textContent = "Abrindo…"; }
+
+  // retoma uma sessão não terminada em vez de criar outra
+  const aberta = await comTratamento(
+    sb.from("session_logs").select("id,criado_em")
+      .eq("workout_id", workoutId).eq("aluno_id", estado.usuario.id)
+      .eq("finalizada", false).order("criado_em", { ascending: false }).limit(1),
+    "Não consegui abrir o treino");
+  if (!aberta.ok) { if (btn) { btn.disabled = false; btn.textContent = "Começar treino"; } return; }
+
+  let sessao = aberta.data?.[0] ?? null;
+  let feitas = [];
+
+  if (sessao) {
+    const s = await comTratamento(
+      sb.from("workout_sets").select("exercise_id,serie_num,carga_kg,reps,concluida")
+        .eq("session_id", sessao.id),
+      "Não consegui recuperar o que você já tinha feito");
+    feitas = s.ok ? (s.data ?? []) : [];
+  } else {
+    const nova = await comTratamento(
+      sb.from("session_logs").insert({ workout_id: workoutId, aluno_id: estado.usuario.id })
+        .select().single(),
+      "Não consegui iniciar a sessão");
+    if (!nova.ok) { if (btn) { btn.disabled = false; btn.textContent = "Começar treino"; } return; }
+    sessao = nova.data;
+  }
+
+  al.treino = treino;
+  al.sessao = sessao;
+  al.inicio = new Date(sessao.criado_em ?? Date.now());
+  al.itens = treino.estrutura.map((ex) => ({
+    exercise_id: ex.exercise_id,
+    nome: ex.nome,
+    metodo: ex.metodo,
+    descanso_s: parseInt(ex.descanso_s) || 90,
+    series: (ex.series ?? []).map((s, j) => {
+      const feita = feitas.find((f) => f.exercise_id === ex.exercise_id && f.serie_num === j + 1);
+      return {
+        carga: feita ? (feita.carga_kg ?? "") : "",
+        reps: feita ? (feita.reps ?? "") : "",
+        alvo_carga: s.carga_alvo ?? "",
+        alvo_reps: s.reps_alvo ?? "",
+        concluida: feita ? !!feita.concluida : false,
+      };
+    }),
+  }));
+
+  if (btn) { btn.disabled = false; btn.textContent = "Começar treino"; }
+
+  await carregarUltimasCargas();
+  $("#exec-nome").textContent = treino.nome;
+  telaAluno("executar");
+  desenharExecucao(0);
+  iniciarRelogio();
+}
+
+/* ---------- o "última vez" de cada exercício ---------- */
+async function carregarUltimasCargas() {
+  al.ultimas = {};
+  const ids = al.itens.map((i) => i.exercise_id);
+  if (!ids.length) return;
+  const r = await sb.from("workout_sets")
+    .select("exercise_id,serie_num,carga_kg,reps,criado_em,session_id")
+    .in("exercise_id", ids).eq("concluida", true)
+    .neq("session_id", al.sessao.id)
+    .order("criado_em", { ascending: false }).limit(300);
+  if (r.error) return;
+  (r.data ?? []).forEach((s) => {
+    const atual = al.ultimas[s.exercise_id];
+    if (!atual || s.criado_em > atual.criado_em) {
+      al.ultimas[s.exercise_id] = s;
+    }
+  });
+}
+
+/* ---------- a tela de execução ---------- */
+function desenharExecucao(abrirIndice) {
+  const feitasTotais = al.itens.reduce(
+    (n, it) => n + it.series.filter((s) => s.concluida).length, 0);
+  const totais = al.itens.reduce((n, it) => n + it.series.length, 0);
+  $("#exec-prog").textContent = feitasTotais + " de " + totais + " séries";
+
+  $("#exec-lista").innerHTML = al.itens.map((it, i) => {
+    const ex = al.exercicios[it.exercise_id] ?? {};
+    const eTempo = ex.categoria === "tempo";
+    const pronto = it.series.every((s) => s.concluida);
+    const aberto = i === abrirIndice;
+    const ult = al.ultimas[it.exercise_id];
+
+    const midia = ex.video_url
+      ? "<video class='video-ex' src='" + escapar(ex.video_url) + "' controls preload='metadata' playsinline></video>"
+      : "<div class='sem-video-ex'>sem vídeo demonstrativo</div>";
+
+    const obs = ex.obs ? "<div class='obs-ex'>" + escapar(ex.obs) + "</div>" : "";
+
+    const ultima = ult
+      ? "<div class='ultima-vez'>Última vez: <b>" + (ult.carga_kg ?? "—") + " kg × " + (ult.reps ?? "—") + "</b></div>"
+      : "<div class='ultima-vez'>Primeira vez fazendo este exercício</div>";
+
+    const cab = "<div class='cab-series'><span>#</span><span>" +
+      (eTempo ? "Intens." : "Carga kg") + "</span><span>" +
+      (eTempo ? "Minutos" : "Reps") + "</span><span>ok</span></div>";
+
+    const linhas = it.series.map((s, j) =>
+      "<div class='serie-linha " + (s.concluida ? "feita" : "") + "'>" +
+      "<div class='n'>" + (j + 1) + "</div>" +
+      "<input inputmode='decimal' value='" + escapar(s.carga) + "' placeholder='" + escapar(s.alvo_carga || "—") + "' data-serie='" + i + ":" + j + ":carga'>" +
+      "<input inputmode='numeric' value='" + escapar(s.reps) + "' placeholder='" + escapar(s.alvo_reps || "—") + "' data-serie='" + i + ":" + j + ":reps'>" +
+      "<button class='ok' data-ok='" + i + ":" + j + "' title='Concluir série'>" + (s.concluida ? "✓" : "○") + "</button>" +
+      "</div>").join("");
+
+    return "<div class='ex-card " + (aberto ? "aberto " : "") + (pronto ? "pronto" : "") + "' data-card='" + i + "'>" +
+      "<div class='ex-cab' data-abrir='" + i + "'>" +
+      "<div class='ordem'>" + (pronto ? "✓" : i + 1) + "</div>" +
+      "<div class='txt'><b>" + escapar(it.nome) + "</b><span>" +
+      it.series.filter((s) => s.concluida).length + " de " + it.series.length + " séries" +
+      (it.metodo && it.metodo !== "normal" ? " · " + escapar(it.metodo) : "") + "</span></div>" +
+      "<div class='seta'>›</div></div>" +
+      "<div class='ex-corpo'>" + midia + obs + ultima + cab + linhas +
+      "<div class='ultima-vez' style='margin-top:10px'>Descanso sugerido: <b>" + it.descanso_s + " seg</b></div>" +
+      "</div></div>";
+  }).join("");
+
+  $$("[data-abrir]").forEach((el) =>
+    el.addEventListener("click", () => {
+      const card = el.parentElement;
+      const jaAberto = card.classList.contains("aberto");
+      $$(".ex-card").forEach((c) => c.classList.remove("aberto"));
+      if (!jaAberto) card.classList.add("aberto");
+    }));
+
+  $$("[data-serie]").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      const [i, j, campo] = inp.dataset.serie.split(":");
+      al.itens[+i].series[+j][campo] = inp.value;
+    });
+    inp.addEventListener("blur", () => {
+      const [i, j] = inp.dataset.serie.split(":").map(Number);
+      if (al.itens[i].series[j].concluida) gravarSerie(i, j);
+    });
+  });
+
+  $$("[data-ok]").forEach((b) =>
+    b.addEventListener("click", () => alternarSerie(...b.dataset.ok.split(":").map(Number))));
+}
+
+/* ---------- gravar série a série ---------- */
+async function alternarSerie(i, j) {
+  const s = al.itens[i].series[j];
+  const virandoFeita = !s.concluida;
+
+  if (virandoFeita && !String(s.carga).trim() && !String(s.reps).trim()) {
+    // sem nada preenchido, assume o alvo prescrito
+    s.carga = s.alvo_carga;
+    s.reps = s.alvo_reps;
+  }
+  s.concluida = virandoFeita;
+
+  const ok = await gravarSerie(i, j);
+  if (!ok) { s.concluida = !virandoFeita; }
+
+  const aberto = [...document.querySelectorAll(".ex-card")].findIndex((c) => c.classList.contains("aberto"));
+  desenharExecucao(aberto);
+
+  if (ok && virandoFeita) {
+    const todas = al.itens[i].series.every((x) => x.concluida);
+    if (!todas) comecarDescanso(al.itens[i].descanso_s);
+  }
+}
+
+async function gravarSerie(i, j) {
+  const it = al.itens[i];
+  const s = it.series[j];
+  const num = (v) => {
+    const n = parseFloat(String(v).replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  };
+  const r = await comTratamento(
+    sb.from("workout_sets").upsert({
+      session_id: al.sessao.id,
+      exercise_id: it.exercise_id,
+      serie_num: j + 1,
+      carga_kg: num(s.carga),
+      reps: s.reps === "" ? null : parseInt(s.reps) || null,
+      concluida: s.concluida,
+    }, { onConflict: "session_id,exercise_id,serie_num" }).select().single(),
+    "Não consegui salvar a série");
+  return r.ok;
+}
+
+/* ---------- relógio e descanso ---------- */
+function iniciarRelogio() {
+  clearInterval(al.relogio);
+  const passo = () => {
+    const seg = Math.max(0, Math.floor((Date.now() - al.inicio.getTime()) / 1000));
+    const m = String(Math.floor(seg / 60)).padStart(2, "0");
+    const s = String(seg % 60).padStart(2, "0");
+    $("#cronometro").textContent = m + ":" + s;
+  };
+  passo();
+  al.relogio = setInterval(passo, 1000);
+}
+
+function comecarDescanso(segundos) {
+  clearInterval(al.descanso);
+  let resta = parseInt(segundos) || 90;
+  const caixa = $("#descanso");
+  const mostra = () => {
+    const m = String(Math.floor(resta / 60)).padStart(2, "0");
+    const s = String(resta % 60).padStart(2, "0");
+    $("#descanso-tempo").textContent = m + ":" + s;
+  };
+  caixa.hidden = false;
+  mostra();
+  al.descanso = setInterval(() => {
+    resta--;
+    mostra();
+    if (resta <= 0) { clearInterval(al.descanso); caixa.hidden = true; }
+  }, 1000);
+}
+$("#descanso-pular").addEventListener("click", () => {
+  clearInterval(al.descanso);
+  $("#descanso").hidden = true;
+});
+
+$("#btn-voltar").addEventListener("click", () => {
+  clearInterval(al.relogio);
+  clearInterval(al.descanso);
+  $("#descanso").hidden = true;
+  telaAluno("hoje");
+});
+
+/* ---------- terminar: PSE ---------- */
+$("#btn-terminar").addEventListener("click", () => {
+  const feitas = al.itens.reduce((n, it) => n + it.series.filter((s) => s.concluida).length, 0);
+  if (!feitas) return erro("Marque ao menos uma série antes de terminar");
+  perguntarPSE();
+});
+
+function perguntarPSE() {
+  const minutos = Math.max(1, Math.round((Date.now() - al.inicio.getTime()) / 60000));
+  abrirModal(
+    "<h3>Como foi o treino?</h3>" +
+    "<p class='desc'>Escolha o quanto ele exigiu de você, de 1 a 10.</p>" +
+    "<div class='pse-legenda'><span>muito leve</span><span>máximo</span></div>" +
+    "<div class='pse-grade' id='pse-grade'>" +
+    [1,2,3,4,5,6,7,8,9,10].map((n) => "<button data-pse='" + n + "'>" + n + "</button>").join("") +
+    "</div>" +
+    "<label class='campo' style='margin-top:14px'><span>Duração (minutos)</span>" +
+    "<input id='pse-min' type='number' inputmode='numeric' min='1' max='400' value='" + minutos + "'></label>" +
+    "<div id='pse-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='pse-voltar'>Voltar</button>" +
+    "<button class='btn' id='pse-salvar'>Finalizar treino</button></div>");
+
+  let escolhido = null;
+  $$("[data-pse]").forEach((b) =>
+    b.addEventListener("click", () => {
+      escolhido = +b.dataset.pse;
+      $$("[data-pse]").forEach((x) => x.classList.toggle("on", x === b));
+    }));
+  $("#pse-voltar").addEventListener("click", fecharModal);
+  $("#pse-salvar").addEventListener("click", async () => {
+    if (!escolhido) {
+      const e = $("#pse-erro");
+      e.textContent = "Escolha um número de 1 a 10.";
+      e.hidden = false;
+      return;
+    }
+    await finalizarTreino(escolhido, parseInt($("#pse-min").value) || minutos);
+  });
+}
+
+async function finalizarTreino(pse, minutos) {
+  const btn = $("#pse-salvar");
+  btn.disabled = true;
+  btn.textContent = "Salvando…";
+
+  const r = await comTratamento(
+    sb.from("session_logs").update({ pse, duracao_min: minutos, finalizada: true })
+      .eq("id", al.sessao.id).select().single(),
+    "Não consegui finalizar o treino");
+
+  if (!r.ok) { btn.disabled = false; btn.textContent = "Finalizar treino"; return; }
+
+  // relê do banco antes de dizer que deu certo
+  const conf = await comTratamento(
+    sb.from("session_logs").select("finalizada,pse").eq("id", al.sessao.id).single(),
+    "Salvei, mas não consegui confirmar");
+  if (!conf.ok || !conf.data.finalizada) { btn.disabled = false; btn.textContent = "Finalizar treino"; return; }
+
+  clearInterval(al.relogio);
+  clearInterval(al.descanso);
+  $("#descanso").hidden = true;
+  fecharModal();
+  al.sessao = null;
+  telaAluno("hoje");
+  bom("Treino concluído. Bom trabalho!");
+}
+
+/* ---------- histórico do aluno ---------- */
+async function carregarHistoricoAluno() {
+  const alvo = $("#lista-historico");
+  const r = await comTratamento(
+    sb.from("session_logs").select("id,data,pse,duracao_min,finalizada,workout_id")
+      .eq("finalizada", true).order("data", { ascending: false }).limit(30),
+    "Não consegui carregar seu histórico");
+  if (!r.ok) return;
+
+  const sessoes = r.data ?? [];
+  if (!sessoes.length) {
+    alvo.innerHTML = "<div class='vazio-hoje'><b>Nada por aqui ainda</b>Seus treinos concluídos aparecem nesta lista.</div>";
+    return;
+  }
+
+  const ids = sessoes.map((s) => s.id);
+  const st = await sb.from("workout_sets").select("session_id,carga_kg,reps,concluida").in("session_id", ids);
+  const porSessao = {};
+  if (!st.error) {
+    (st.data ?? []).filter((s) => s.concluida).forEach((s) => {
+      const p = porSessao[s.session_id] ?? (porSessao[s.session_id] = { n: 0, vol: 0 });
+      p.n++;
+      p.vol += (Number(s.carga_kg) || 0) * (Number(s.reps) || 0);
+    });
+  }
+
+  const nomes = {};
+  al.treinos.forEach((t) => (nomes[t.id] = t.nome));
+
+  alvo.innerHTML = sessoes.map((s) => {
+    const p = porSessao[s.id] ?? { n: 0, vol: 0 };
+    return "<div class='hist-item'><div class='linha1'><b>" +
+      escapar(nomes[s.workout_id] ?? "Treino") + "</b><span class='pill'>" +
+      new Date(s.data + "T12:00:00").toLocaleDateString("pt-BR") + "</span></div>" +
+      "<div class='dados'>" + p.n + " séries · " +
+      (p.vol ? Math.round(p.vol).toLocaleString("pt-BR") + " kg levantados · " : "") +
+      (s.duracao_min ? s.duracao_min + " min · " : "") +
+      "esforço " + rotuloPSE(s.pse) + "</div></div>";
+  }).join("");
+}
+
+// o aluno ve rotulo, nunca formula nem unidade arbitraria
+function rotuloPSE(pse) {
+  if (!pse) return "—";
+  if (pse <= 3) return "leve";
+  if (pse <= 6) return "moderado";
+  if (pse <= 8) return "puxado";
+  return "máximo";
+}
