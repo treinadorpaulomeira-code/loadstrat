@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef1f6">
+<title>LOADSTRAT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./estilo.css">
+</head>
+<body>
+
+<!-- ============ CARREGANDO ============ -->
+<div id="splash" class="splash">
+  <div class="logo-grande">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L21 6.5L12 11L3 6.5L12 2Z" fill="#eaf3ff"/>
+        <path d="M3 11L12 15.5L21 11" stroke="#9fccff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3 15.5L12 20L21 15.5" stroke="#5aa9f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <b>LOAD<span>STRAT</span></b>
+  </div>
+  <div class="spinner"></div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="tela-login" class="login-wrap" hidden>
+  <form class="login-card" id="form-login" novalidate>
+    <div class="logo-grande">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L21 6.5L12 11L3 6.5L12 2Z" fill="#eaf3ff"/>
+          <path d="M3 11L12 15.5L21 11" stroke="#9fccff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 15.5L12 20L21 15.5" stroke="#5aa9f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <b>LOAD<span>STRAT</span></b>
+    </div>
+    <p class="login-sub">Planeje. Execute. Progrida.</p>
+
+    <label class="campo">
+      <span>E-mail</span>
+      <input type="email" id="in-email" autocomplete="username" required placeholder="voce@email.com">
+    </label>
+    <label class="campo">
+      <span>Senha</span>
+      <input type="password" id="in-senha" autocomplete="current-password" required placeholder="••••••••">
+    </label>
+
+    <div id="erro-login" class="erro" hidden></div>
+    <button class="btn bloco" id="btn-entrar" type="submit">Entrar</button>
+    <button class="link-sutil" id="btn-esqueci" type="button">Esqueci minha senha</button>
+  </form>
+</div>
+
+<!-- ============ PAINEL DO TREINADOR ============ -->
+<div id="app-treinador" class="shell" hidden>
+  <aside class="side" id="side">
+    <div class="logo">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L21 6.5L12 11L3 6.5L12 2Z" fill="#eaf3ff"/>
+          <path d="M3 11L12 15.5L21 11" stroke="#9fccff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 15.5L12 20L21 15.5" stroke="#5aa9f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div><b>LOAD<span>STRAT</span></b><small id="side-nome">—</small></div>
+    </div>
+
+    <button class="navitem on" data-nav="dash">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      Visão geral
+    </button>
+    <button class="navitem" data-nav="alunos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
+      Alunos<span class="badge" id="badge-alunos" hidden>0</span>
+    </button>
+    <button class="navitem" data-nav="prescrever">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7l6-3 6 3v10l-6 3-6-3z"/></svg>
+      Prescrever treino
+    </button>
+    <button class="navitem" data-nav="biblioteca">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      Biblioteca
+    </button>
+
+    <div class="foot">
+      <div class="av" id="side-iniciais">—</div>
+      <div class="quem"><div class="nm" id="side-nome2">—</div><div class="rl">Treinador</div></div>
+      <button class="sair" id="btn-sair" title="Sair">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main" id="main">
+
+    <!-- VISÃO GERAL -->
+    <section class="page on" data-page="dash">
+      <header class="topbar">
+        <div><h1 id="saudacao">Olá</h1><div class="sub" id="hoje">—</div></div>
+        <button class="btn" data-ir="prescrever">+ Novo treino</button>
+      </header>
+      <div class="conteudo">
+        <div class="grid g4">
+          <div class="stat"><div class="ic">💪</div><div class="v" id="st-alunos">—</div><div class="l">Alunos ativos</div></div>
+          <div class="stat"><div class="ic">📋</div><div class="v" id="st-publicados">—</div><div class="l">Treinos publicados</div></div>
+          <div class="stat"><div class="ic">📝</div><div class="v" id="st-rascunhos">—</div><div class="l">Rascunhos</div></div>
+          <div class="stat"><div class="ic">🎬</div><div class="v" id="st-videos">—</div><div class="l">Exercícios com vídeo</div></div>
+        </div>
+
+        <div class="sechd"><h2>Últimos treinos prescritos</h2><a data-ir="prescrever">Prescrever →</a></div>
+        <div class="card pad0">
+          <table>
+            <thead><tr><th>Aluno</th><th>Treino</th><th>Data</th><th>Status</th><th></th></tr></thead>
+            <tbody id="tb-ultimos"><tr><td colspan="5" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALUNOS -->
+    <section class="page" data-page="alunos">
+      <header class="topbar">
+        <div><h1>Alunos</h1><div class="sub" id="sub-alunos">—</div></div>
+        <button class="btn" id="btn-novo-aluno">+ Novo aluno</button>
+      </header>
+      <div class="conteudo">
+        <div class="card pad0">
+          <table>
+            <thead><tr><th>Aluno</th><th>Objetivo</th><th>Esporte</th><th>Peso</th><th>Treinos</th><th></th></tr></thead>
+            <tbody id="tb-alunos"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRESCREVER -->
+    <section class="page" data-page="prescrever">
+      <header class="topbar">
+        <div><h1>Prescrever treino</h1><div class="sub">Monte o treino e publique para o aluno</div></div>
+        <select id="sel-aluno" class="select-topo"></select>
+      </header>
+      <div class="conteudo">
+        <div class="builder">
+          <div class="wk-canvas">
+            <input class="wk-name" id="in-nome-treino" placeholder="Nome do treino (ex.: Push A — peito, ombro, tríceps)">
+            <div id="lista-ex"></div>
+            <div class="empty" id="vazio-treino">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M6 7l6-3 6 3v10l-6 3-6-3z"/></svg>
+              <p>Clique em exercícios da biblioteca para montar o treino.</p>
+            </div>
+            <div class="summary-bar">
+              <div class="m">Exercícios<b id="s-ex">0</b></div>
+              <div class="m">Séries<b id="s-series">0</b></div>
+              <div class="m">Tempo est.<b id="s-tempo">0min</b></div>
+              <div class="acoes">
+                <button class="btn ghost" id="btn-rascunho">Salvar rascunho</button>
+                <button class="btn" id="btn-publicar">Publicar para o aluno →</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="exlib-panel">
+            <div class="fmode">
+              <button class="on" data-modo="grupo">Grupo muscular</button>
+              <button data-modo="padrao">Padrão</button>
+            </div>
+            <input class="lib-search" id="in-busca-lib" placeholder="Buscar exercício…">
+            <div class="chips" id="chips"></div>
+            <div class="liblist" id="liblist"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIBLIOTECA -->
+    <section class="page" data-page="biblioteca">
+      <header class="topbar">
+        <div><h1>Biblioteca</h1><div class="sub" id="sub-bib">—</div></div>
+        <button class="btn" id="btn-novo-ex">+ Novo exercício</button>
+      </header>
+      <div class="conteudo">
+        <div class="filtros-bib">
+          <input class="lib-search grande" id="in-busca-bib" placeholder="Buscar exercício…">
+          <label class="check"><input type="checkbox" id="ck-meus"> Só os meus</label>
+          <label class="check"><input type="checkbox" id="ck-sem-video"> Sem vídeo</label>
+        </div>
+        <div class="grid-bib" id="grid-bib"></div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ============ APP DO ALUNO (etapa 3) ============ -->
+<div id="app-aluno" class="aluno-wrap" hidden>
+  <div class="aviso-etapa">
+    <div class="logo-grande">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L21 6.5L12 11L3 6.5L12 2Z" fill="#eaf3ff"/>
+          <path d="M3 11L12 15.5L21 11" stroke="#9fccff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 15.5L12 20L21 15.5" stroke="#5aa9f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <b>LOAD<span>STRAT</span></b>
+    </div>
+    <h2 id="aluno-ola">Olá!</h2>
+    <p>O app do aluno entra na próxima etapa. Sua conta já está criada e vinculada ao seu treinador.</p>
+    <button class="btn ghost" id="btn-sair-aluno">Sair</button>
+  </div>
+</div>
+
+<!-- ============ MODAIS ============ -->
+<div class="modal-fundo" id="modal-fundo" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
