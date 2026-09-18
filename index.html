@@ -197,10 +197,11 @@
   </div>
 </div>
 
-<!-- ============ APP DO ALUNO (etapa 3) ============ -->
-<div id="app-aluno" class="aluno-wrap" hidden>
-  <div class="aviso-etapa">
-    <div class="logo-grande">
+<!-- ============ APP DO ALUNO ============ -->
+<div id="app-aluno" class="aluno-app" hidden>
+
+  <header class="aluno-topo">
+    <div class="marca-mini">
       <div class="mark">
         <svg viewBox="0 0 24 24" fill="none">
           <path d="M12 2L21 6.5L12 11L3 6.5L12 2Z" fill="#eaf3ff"/>
@@ -210,9 +211,62 @@
       </div>
       <b>LOAD<span>STRAT</span></b>
     </div>
-    <h2 id="aluno-ola">Olá!</h2>
-    <p>O app do aluno entra na próxima etapa. Sua conta já está criada e vinculada ao seu treinador.</p>
-    <button class="btn ghost" id="btn-sair-aluno">Sair</button>
+    <button class="sair" id="btn-sair-aluno" title="Sair">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+    </button>
+  </header>
+
+  <main class="aluno-corpo" id="aluno-corpo">
+
+    <!-- HOJE -->
+    <section class="tela-aluno on" data-tela="hoje">
+      <div class="ola-bloco">
+        <h1 id="aluno-ola">Olá</h1>
+        <p id="aluno-data">—</p>
+      </div>
+      <div id="lista-treinos"><div class="carregando">Carregando seus treinos…</div></div>
+    </section>
+
+    <!-- EXECUÇÃO -->
+    <section class="tela-aluno" data-tela="executar">
+      <div class="exec-topo">
+        <button class="voltar" id="btn-voltar">‹</button>
+        <div class="exec-titulo">
+          <b id="exec-nome">—</b>
+          <span id="exec-prog">—</span>
+        </div>
+        <span class="cronometro" id="cronometro">00:00</span>
+      </div>
+      <div id="exec-lista"></div>
+      <div class="exec-rodape">
+        <button class="btn bloco" id="btn-terminar">Terminar treino</button>
+      </div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="tela-aluno" data-tela="historico">
+      <div class="ola-bloco"><h1>Histórico</h1><p>Seus treinos concluídos</p></div>
+      <div id="lista-historico"><div class="carregando">Carregando…</div></div>
+    </section>
+
+  </main>
+
+  <nav class="aluno-nav" id="aluno-nav">
+    <button class="on" data-tela-nav="hoje">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7l6-3 6 3v10l-6 3-6-3z"/></svg>
+      Treino
+    </button>
+    <button data-tela-nav="historico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5M4 19h16M8 17V9M12 17V6M16 17v-5"/></svg>
+      Histórico
+    </button>
+  </nav>
+
+  <!-- descanso -->
+  <div class="descanso" id="descanso" hidden>
+    <span id="descanso-tempo">01:30</span>
+    <span class="descanso-txt">descanso</span>
+    <button id="descanso-pular">pular</button>
   </div>
 </div>
 
