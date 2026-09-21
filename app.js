@@ -22,7 +22,7 @@ const estado = {
   perfil: null,
   alunos: [],
   exercicios: [],
-  treino: { id: null, nome: "", itens: [] },
+  treino: { id: null, nome: "", itens: [], semanas: 1, freq: 1 },
   filtro: { modo: "grupo", chip: "Todos", busca: "" },
 };
 
@@ -402,7 +402,7 @@ function normalizar(s) {
   return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-function exercíciosFiltrados() {
+function exerciciosFiltrados() {
   const { modo, chip, busca } = estado.filtro;
   return estado.exercicios.filter((ex) => {
     const campo = modo === "grupo" ? ex.grupo : ex.padrao;
@@ -413,7 +413,7 @@ function exercíciosFiltrados() {
 }
 
 function desenharLib() {
-  const lista = exercíciosFiltrados();
+  const lista = exerciciosFiltrados();
   $("#liblist").innerHTML = lista.length
     ? lista.map((ex) => {
         const dentro = estado.treino.itens.some((i) => i.exercise_id === ex.id);
@@ -453,7 +453,8 @@ function desenharTreino() {
 
   alvo.innerHTML = estado.treino.itens.map((item, i) => {
     const eTempo = item.categoria === "tempo";
-    const linhas = item.series.map((s, j) =>
+    const ondulado = estado.treino.semanas > 1;
+    const linhas = ondulado ? "" : item.series.map((s, j) =>
       "<tr><td class='sn'>" + (j + 1) + "</td>" +
       "<td><input value='" + escapar(s.carga_alvo) + "' placeholder='-' inputmode='decimal' data-campo='carga_alvo' data-i='" + i + "' data-j='" + j + "'></td>" +
       "<td><input value='" + escapar(s.reps_alvo) + "' placeholder='-' inputmode='numeric' data-campo='reps_alvo' data-i='" + i + "' data-j='" + j + "'></td>" +
@@ -467,10 +468,11 @@ function desenharTreino() {
       "<select data-metodo='" + i + "'>" +
       METODOS.map((m) => "<option" + (item.metodo === m ? " selected" : "") + ">" + m + "</option>").join("") +
       "</select><button class='del' data-rmex='" + i + "' title='Remover exercício'>×</button></div>" +
-      "<div class='exbd'><table class='setgrid'><thead><tr><th style='width:34px'>#</th><th>" +
+      "<div class='exbd'>" + (ondulado ? tabelaOndas(item, i, eTempo) :
+      "<table class='setgrid'><thead><tr><th style='width:34px'>#</th><th>" +
       (eTempo ? "Intensidade" : "Carga (kg)") + "</th><th>" + (eTempo ? "Tempo (min)" : "Reps") +
       "</th><th style='width:34px'></th></tr></thead><tbody>" + linhas + "</tbody></table>" +
-      "<button class='btn ghost sm' data-addserie='" + i + "' style='margin-top:8px'>+ Série</button>" +
+      "<button class='btn ghost sm' data-addserie='" + i + "' style='margin-top:8px'>+ Série</button>") +
       "<div class='rest-in'>Descanso <input value='" + item.descanso_s + "' inputmode='numeric' data-descanso='" + i + "'> seg</div></div></div>";
   }).join("");
 
@@ -512,7 +514,64 @@ function desenharTreino() {
   $$("[data-descer]").forEach((b) =>
     b.addEventListener("click", () => trocar(+b.dataset.descer, +b.dataset.descer + 1)));
 
+  $$("[data-onda]").forEach((inp) =>
+    inp.addEventListener("input", () => {
+      const [i, w, campo] = inp.dataset.onda.split(":");
+      estado.treino.itens[+i].ondas[+w][campo] = campo === "series"
+        ? Math.max(1, Math.min(12, parseInt(inp.value) || 1)) : inp.value;
+      calcularResumoTreino();
+    }));
+  $$("[data-aplicar]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const base = estado.treino.itens[+b.dataset.aplicar].ondas;
+      estado.treino.itens.forEach((it) => {
+        it.ondas = base.map((o) => ({ series: o.series, reps: o.reps,
+          carga: it === estado.treino.itens[+b.dataset.aplicar] ? o.carga : "" }));
+      });
+      desenharTreino();
+      bom("Esquema de semanas copiado para todos os exercícios");
+    }));
+
   calcularResumoTreino();
+}
+
+/* ---------- ondulação semanal ---------- */
+function tabelaOndas(item, i, eTempo) {
+  garantirOndas(item);
+  const linhas = item.ondas.map((o, w) =>
+    "<tr><td class='sn'>S" + (w + 1) + "</td>" +
+    "<td><input value='" + escapar(o.series) + "' inputmode='numeric' data-onda='" + i + ":" + w + ":series'></td>" +
+    "<td><input value='" + escapar(o.reps) + "' placeholder='-' inputmode='numeric' data-onda='" + i + ":" + w + ":reps'></td>" +
+    "<td><input value='" + escapar(o.carga) + "' placeholder='-' inputmode='decimal' data-onda='" + i + ":" + w + ":carga'></td></tr>"
+  ).join("");
+  return "<table class='setgrid'><thead><tr><th style='width:40px'>Sem.</th><th>Séries</th><th>" +
+    (eTempo ? "Minutos" : "Reps") + "</th><th>" + (eTempo ? "Intensidade" : "Carga (kg)") +
+    "</th></tr></thead><tbody>" + linhas + "</tbody></table>" +
+    (estado.treino.itens.length > 1
+      ? "<button class='btn ghost sm' data-aplicar='" + i + "' style='margin-top:8px'>Aplicar este esquema a todos</button>" : "");
+}
+
+function garantirOndas(item) {
+  const n = estado.treino.semanas;
+  if (!Array.isArray(item.ondas) || !item.ondas.length) {
+    const s0 = item.series?.[0] ?? {};
+    item.ondas = [{ series: item.series?.length || 3, reps: s0.reps_alvo ?? "", carga: s0.carga_alvo ?? "" }];
+  }
+  while (item.ondas.length < n) {
+    const u = item.ondas[item.ondas.length - 1];
+    item.ondas.push({ series: u.series, reps: u.reps, carga: u.carga });
+  }
+  if (item.ondas.length > n) item.ondas.length = n;
+}
+
+function configurarOndas() {
+  estado.treino.semanas = parseInt($("#sel-semanas").value) || 1;
+  estado.treino.freq = parseInt($("#sel-freq").value) || 1;
+  if (estado.treino.semanas > 1) estado.treino.itens.forEach(garantirOndas);
+  $("#onda-dica").textContent = estado.treino.semanas > 1
+    ? "A semana avança a cada " + estado.treino.freq + (estado.treino.freq === 1 ? " treino concluído" : " treinos concluídos") + " pelo aluno."
+    : "Séries fixas — escolha mais de 1 semana para ondular.";
+  desenharTreino();
 }
 
 function trocar(a, b) {
@@ -525,8 +584,9 @@ function trocar(a, b) {
 function calcularResumoTreino() {
   let series = 0, seg = 0;
   estado.treino.itens.forEach((it) => {
-    series += it.series.length;
-    seg += it.series.length * ((parseInt(it.descanso_s) || 0) + 45);
+    const n = estado.treino.semanas > 1 && it.ondas?.length ? (parseInt(it.ondas[0].series) || 0) : it.series.length;
+    series += n;
+    seg += n * ((parseInt(it.descanso_s) || 0) + 45);
   });
   $("#s-ex").textContent = estado.treino.itens.length;
   $("#s-series").textContent = series;
@@ -547,7 +607,17 @@ async function salvarTreino(status) {
     treinador_id: estado.usuario.id,
     aluno_id: alunoId,
     nome,
-    estrutura: estado.treino.itens,
+    estrutura: estado.treino.itens.map((it) => {
+      if (estado.treino.semanas > 1 && it.ondas?.length) {
+        const o = it.ondas[0];
+        return { ...it, ondas: it.ondas.slice(0, estado.treino.semanas),
+          series: Array.from({ length: parseInt(o.series) || 1 }, () => ({ carga_alvo: o.carga, reps_alvo: o.reps })) };
+      }
+      const { ondas, ...resto } = it;
+      return resto;
+    }),
+    semanas: estado.treino.semanas,
+    sessoes_por_semana: estado.treino.freq,
     status,
   };
 
@@ -584,8 +654,11 @@ async function salvarTreino(status) {
 const nomeAluno = (id) => estado.alunos.find((a) => a.id === id)?.nome ?? "o aluno";
 
 function limparTreino() {
-  estado.treino = { id: null, nome: "", itens: [] };
+  estado.treino = { id: null, nome: "", itens: [], semanas: 1, freq: 1 };
   $("#in-nome-treino").value = "";
+  $("#sel-semanas").value = "1";
+  $("#sel-freq").value = "1";
+  configurarOndas();
   desenharTreino();
   desenharLib();
 }
@@ -599,15 +672,25 @@ async function abrirTreino(id) {
     id: r.data.id,
     nome: r.data.nome,
     itens: Array.isArray(r.data.estrutura) ? r.data.estrutura : [],
+    semanas: r.data.semanas || 1,
+    freq: r.data.sessoes_por_semana || 1,
   };
   $("#in-nome-treino").value = r.data.nome;
+  $("#sel-semanas").value = String(estado.treino.semanas);
+  $("#sel-freq").value = String(estado.treino.freq);
   $("#sel-aluno").value = r.data.aluno_id;
   irPara("prescrever");
-  desenharTreino();
+  configurarOndas();
   desenharLib();
 }
 
 $("#btn-rascunho").addEventListener("click", () => salvarTreino("rascunho"));
+$("#sel-semanas").innerHTML = Array.from({ length: 12 }, (_, k) =>
+  "<option value='" + (k + 1) + "'>" + (k + 1) + (k ? " semanas" : " semana") + "</option>").join("");
+$("#sel-freq").innerHTML = Array.from({ length: 7 }, (_, k) =>
+  "<option value='" + (k + 1) + "'>" + (k + 1) + "x por semana</option>").join("");
+$("#sel-semanas").addEventListener("change", configurarOndas);
+$("#sel-freq").addEventListener("change", configurarOndas);
 $("#btn-publicar").addEventListener("click", () => salvarTreino("publicado"));
 
 $("#in-busca-bib").addEventListener("input", desenharBiblioteca);
@@ -850,11 +933,24 @@ async function carregarBibliotecaAluno() {
 
 async function carregarTreinosAluno() {
   const r = await comTratamento(
-    sb.from("workouts").select("id,nome,data,estrutura,status")
+    sb.from("workouts").select("id,nome,data,estrutura,status,semanas,sessoes_por_semana")
       .eq("status", "publicado").order("data", { ascending: false }).limit(10),
     "Não consegui carregar seus treinos");
   if (!r.ok) return;
   al.treinos = (r.data ?? []).filter((t) => Array.isArray(t.estrutura) && t.estrutura.length);
+
+  // semana atual de cada treino: avança a cada N sessões concluídas
+  const feitas = await sb.from("session_logs").select("workout_id")
+    .eq("aluno_id", estado.usuario.id).eq("finalizada", true);
+  const cont = {};
+  (feitas.data ?? []).forEach((s) => (cont[s.workout_id] = (cont[s.workout_id] ?? 0) + 1));
+  al.treinos.forEach((t) => {
+    const total = t.semanas || 1, freq = t.sessoes_por_semana || 1;
+    const n = cont[t.id] ?? 0;
+    t.semanaAtual = Math.min(total, Math.floor(n / freq) + 1);
+    t.cicloFeito = total > 1 && n >= total * freq;
+    t.feitasNaSemana = n - (t.semanaAtual - 1) * freq;
+  });
   desenharTreinosHoje();
 }
 
@@ -868,17 +964,23 @@ function desenharTreinosHoje() {
   }
   const hoje = new Date().toISOString().slice(0, 10);
   alvo.innerHTML = al.treinos.map((t) => {
-    const series = t.estrutura.reduce((s, e) => s + (e.series?.length ?? 0), 0);
+    const w = t.semanaAtual || 1;
+    const series = t.estrutura.reduce((s, e) => s + seriesDaSemana(e, w).length, 0);
     const min = Math.round(t.estrutura.reduce(
-      (s, e) => s + (e.series?.length ?? 0) * ((parseInt(e.descanso_s) || 0) + 45), 0) / 60);
+      (s, e) => s + seriesDaSemana(e, w).length * ((parseInt(e.descanso_s) || 0) + 45), 0) / 60);
     const previa = t.estrutura.slice(0, 4)
-      .map((e) => "<span>• " + escapar(e.nome) + " — " + (e.series?.length ?? 0) + "×</span>").join("");
+      .map((e) => "<span>• " + escapar(e.nome) + " — " + esquemaTexto(e, w) + "</span>").join("");
+    const faixaSemana = (t.semanas || 1) > 1
+      ? "<div class='semana-faixa'><b>Semana " + w + " de " + t.semanas + "</b><span>" +
+        (t.cicloFeito ? "ciclo concluído — fale com seu treinador"
+          : t.feitasNaSemana + " de " + (t.sessoes_por_semana || 1) + " treinos feitos nesta semana") +
+        "</span></div>" : "";
     const resto = t.estrutura.length > 4
       ? "<span>e mais " + (t.estrutura.length - 4) + "</span>" : "";
     return "<div class='treino-card'><div class='topo'><h2>" + escapar(t.nome) + "</h2>" +
       (t.data === hoje ? "<span class='pill azul'>hoje</span>"
         : "<span class='pill'>" + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"}) + "</span>") +
-      "</div><div class='resumo'><div>Exercícios<b>" + t.estrutura.length + "</b></div>" +
+      "</div>" + faixaSemana + "<div class='resumo'><div>Exercícios<b>" + t.estrutura.length + "</b></div>" +
       "<div>Séries<b>" + series + "</b></div><div>Tempo<b>" + min + "min</b></div></div>" +
       "<div class='lista-previa'>" + previa + resto + "</div>" +
       "<button class='btn bloco' data-comecar='" + t.id + "'>Começar treino</button></div>";
@@ -886,6 +988,21 @@ function desenharTreinosHoje() {
 
   $$("[data-comecar]").forEach((b) =>
     b.addEventListener("click", () => comecarTreino(b.dataset.comecar)));
+}
+
+/* ---------- ondulação: o que vale nesta semana ---------- */
+function seriesDaSemana(ex, w) {
+  if (Array.isArray(ex.ondas) && ex.ondas.length) {
+    const o = ex.ondas[Math.min(w, ex.ondas.length) - 1];
+    return Array.from({ length: parseInt(o.series) || 1 },
+      () => ({ carga_alvo: o.carga ?? "", reps_alvo: o.reps ?? "" }));
+  }
+  return ex.series ?? [];
+}
+function esquemaTexto(ex, w) {
+  const s = seriesDaSemana(ex, w);
+  const reps = s[0]?.reps_alvo;
+  return s.length + "×" + (reps ? reps : "");
 }
 
 /* ---------- abrir a sessão ---------- */
@@ -915,7 +1032,7 @@ async function comecarTreino(workoutId) {
     feitas = s.ok ? (s.data ?? []) : [];
   } else {
     const nova = await comTratamento(
-      sb.from("session_logs").insert({ workout_id: workoutId, aluno_id: estado.usuario.id })
+      sb.from("session_logs").insert({ workout_id: workoutId, aluno_id: estado.usuario.id, semana: treino.semanaAtual || 1 })
         .select().single(),
       "Não consegui iniciar a sessão");
     if (!nova.ok) { if (btn) { btn.disabled = false; btn.textContent = "Começar treino"; } return; }
@@ -930,7 +1047,7 @@ async function comecarTreino(workoutId) {
     nome: ex.nome,
     metodo: ex.metodo,
     descanso_s: parseInt(ex.descanso_s) || 90,
-    series: (ex.series ?? []).map((s, j) => {
+    series: seriesDaSemana(ex, treino.semanaAtual || 1).map((s, j) => {
       const feita = feitas.find((f) => f.exercise_id === ex.exercise_id && f.serie_num === j + 1);
       return {
         carga: feita ? (feita.carga_kg ?? "") : "",
@@ -975,7 +1092,8 @@ function desenharExecucao(abrirIndice) {
   const feitasTotais = al.itens.reduce(
     (n, it) => n + it.series.filter((s) => s.concluida).length, 0);
   const totais = al.itens.reduce((n, it) => n + it.series.length, 0);
-  $("#exec-prog").textContent = feitasTotais + " de " + totais + " séries";
+  const sem = (al.treino?.semanas || 1) > 1 ? "Semana " + (al.treino.semanaAtual || 1) + " · " : "";
+  $("#exec-prog").textContent = sem + feitasTotais + " de " + totais + " séries";
 
   $("#exec-lista").innerHTML = al.itens.map((it, i) => {
     const ex = al.exercicios[it.exercise_id] ?? {};
@@ -1192,6 +1310,7 @@ async function finalizarTreino(pse, minutos) {
   al.sessao = null;
   telaAluno("hoje");
   bom("Treino concluído. Bom trabalho!");
+  await carregarTreinosAluno();
 }
 
 /* ---------- histórico do aluno ---------- */
