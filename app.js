@@ -185,6 +185,7 @@ async function iniciarPainel() {
   desenharChips();
   await Promise.all([carregarAlunos(), carregarExercicios()]);
   await carregarResumo();
+  carregarAlertas();
 }
 
 async function carregarAlunos() {
@@ -269,7 +270,8 @@ function desenharAlunos() {
     escapar(a.nome) + "</b></div></td><td class='mini'>" + escapar(a.objetivo ?? "-") +
     "</td><td class='mini'>" + escapar(a.esporte ?? "-") + "</td><td class='mini'>" +
     (a.peso_kg ? a.peso_kg + " kg" : "-") + "</td><td class='mini' data-contagem='" + a.id +
-    "'>-</td><td><button class='btn ghost sm' data-prescrever='" + a.id + "'>prescrever</button></td></tr>"
+    "'>-</td><td class='acoes-linha'><button class='btn ghost sm' data-perfil='" + a.id + "'>ver carga</button> " +
+    "<button class='btn ghost sm' data-prescrever='" + a.id + "'>prescrever</button></td></tr>"
   ).join("");
 
   $$("[data-prescrever]").forEach((b) =>
@@ -278,6 +280,7 @@ function desenharAlunos() {
       irPara("prescrever");
     }));
 
+  ligarPerfis();
   contarTreinosPorAluno();
 }
 
@@ -722,6 +725,7 @@ function desenharBiblioteca() {
       "</div></div>").join("")
     : "<p class='vazio'>Nenhum exercício com esse filtro.</p>";
 
+  protegerVideos($("#grid-bib"));
   $$("[data-video]").forEach((b) =>
     b.addEventListener("click", () => enviarVideo(b.dataset.video)));
   $$("[data-apagar]").forEach((b) =>
@@ -908,6 +912,7 @@ async function iniciarAluno() {
     weekday: "long", day: "numeric", month: "long",
   });
   await carregarBibliotecaAluno();
+  await carregarCheckinHoje();
   await carregarTreinosAluno();
 }
 
@@ -918,6 +923,7 @@ function telaAluno(qual) {
   $("#aluno-corpo").scrollTo(0, 0);
   window.scrollTo(0, 0);
   if (qual === "historico") carregarHistoricoAluno();
+  if (qual === "checkin") desenharCheckin();
 }
 $$("[data-tela-nav]").forEach((b) =>
   b.addEventListener("click", () => telaAluno(b.dataset.telaNav)));
@@ -957,13 +963,14 @@ async function carregarTreinosAluno() {
 function desenharTreinosHoje() {
   const alvo = $("#lista-treinos");
   if (!al.treinos.length) {
-    alvo.innerHTML =
+    alvo.innerHTML = bannerCheckin() +
       "<div class='vazio-hoje'><b>Nenhum treino por aqui ainda</b>" +
       "Assim que seu treinador publicar, ele aparece nesta tela.</div>";
+    ligarBannerCheckin();
     return;
   }
   const hoje = new Date().toISOString().slice(0, 10);
-  alvo.innerHTML = al.treinos.map((t) => {
+  alvo.innerHTML = bannerCheckin() + al.treinos.map((t) => {
     const w = t.semanaAtual || 1;
     const series = t.estrutura.reduce((s, e) => s + seriesDaSemana(e, w).length, 0);
     const min = Math.round(t.estrutura.reduce(
@@ -988,6 +995,7 @@ function desenharTreinosHoje() {
 
   $$("[data-comecar]").forEach((b) =>
     b.addEventListener("click", () => comecarTreino(b.dataset.comecar)));
+  ligarBannerCheckin();
 }
 
 /* ---------- ondulação: o que vale nesta semana ---------- */
@@ -1136,6 +1144,7 @@ function desenharExecucao(abrirIndice) {
       "</div></div>";
   }).join("");
 
+  protegerVideos($("#exec-lista"));
   $$("[data-abrir]").forEach((el) =>
     el.addEventListener("click", () => {
       const card = el.parentElement;
@@ -1361,4 +1370,465 @@ function rotuloPSE(pse) {
   if (pse <= 6) return "moderado";
   if (pse <= 8) return "puxado";
   return "máximo";
+}
+
+/* =========================================================
+   GRÁFICOS (SVG puro, sem biblioteca)
+   Uma série, um eixo, barras finas com ponta arredondada,
+   dica ao passar o dedo/mouse. Cor = azul da marca.
+   ========================================================= */
+const COR_SERIE = "#2f97ef";
+const fmt = (n, casas = 0) =>
+  n === null || n === undefined || Number.isNaN(n) ? "—"
+  : Number(n).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+
+function ticksLimpos(max) {
+  if (!max || max <= 0) return [0, 1];
+  const bruto = max / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((p) => p >= bruto);
+  const t = [];
+  for (let v = 0; v <= max + passo * 0.001; v += passo) t.push(v);
+  if (t[t.length - 1] < max) t.push(t[t.length - 1] + passo);
+  return t;
+}
+
+function mostrarDica(ev, html) {
+  const d = $("#dica-graf");
+  d.innerHTML = html;
+  d.hidden = false;
+  const x = (ev.touches?.[0]?.clientX ?? ev.clientX) + 12;
+  const y = (ev.touches?.[0]?.clientY ?? ev.clientY) - 10;
+  d.style.left = Math.min(x, window.innerWidth - d.offsetWidth - 8) + "px";
+  d.style.top = Math.max(8, y - d.offsetHeight) + "px";
+}
+const esconderDica = () => ($("#dica-graf").hidden = true);
+
+function moldura(el, pontos, altura) {
+  const W = Math.max(el.clientWidth || 640, 280), H = altura;
+  const m = { t: 14, r: 12, b: 26, l: 44 };
+  const max = Math.max(...pontos.map((p) => p.valor ?? 0), 0);
+  const ticks = ticksLimpos(max);
+  const topo = ticks[ticks.length - 1] || 1;
+  const y = (v) => m.t + (H - m.t - m.b) * (1 - v / topo);
+  let grade = "";
+  ticks.forEach((t) => {
+    grade += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" class="g-grade"/>` +
+      `<text x="${m.l - 8}" y="${y(t) + 4}" class="g-eixo" text-anchor="end">${fmt(t)}</text>`;
+  });
+  return { W, H, m, y, grade };
+}
+
+function graficoBarras(el, pontos, { unidade = "", rotuloCada = 1 } = {}) {
+  if (!pontos.length || pontos.every((p) => !p.valor)) {
+    el.innerHTML = "<div class='g-vazio'>Ainda não há carga registrada neste período.</div>";
+    return;
+  }
+  const { W, H, m, y, grade } = moldura(el, pontos, 220);
+  const faixa = (W - m.l - m.r) / pontos.length;
+  const larg = Math.max(3, Math.min(24, faixa - 2));
+  let barras = "", rotulos = "", alvos = "";
+  pontos.forEach((p, i) => {
+    const cx = m.l + faixa * i + faixa / 2;
+    const v = p.valor ?? 0;
+    if (v > 0) {
+      const topo = y(v), base = y(0), r = Math.min(4, larg / 2, base - topo);
+      barras += `<path d="M${cx - larg / 2},${base} V${topo + r} Q${cx - larg / 2},${topo} ${cx - larg / 2 + r},${topo} H${cx + larg / 2 - r} Q${cx + larg / 2},${topo} ${cx + larg / 2},${topo + r} V${base} Z" fill="${COR_SERIE}"/>`;
+    }
+    if (i % rotuloCada === 0 || i === pontos.length - 1)
+      rotulos += `<text x="${cx}" y="${H - 8}" class="g-eixo" text-anchor="middle">${escapar(p.rotulo)}</text>`;
+    alvos += `<rect x="${m.l + faixa * i}" y="${m.t}" width="${faixa}" height="${H - m.t - m.b}" fill="transparent" data-i="${i}"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gráfico de barras">
+    ${grade}<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" class="g-base"/>${barras}${rotulos}${alvos}</svg>`;
+  el.querySelectorAll("rect[data-i]").forEach((r) => {
+    const p = pontos[+r.dataset.i];
+    const f = (ev) => mostrarDica(ev, `<b>${escapar(p.dica ?? p.rotulo)}</b><span>${fmt(p.valor)} ${unidade}</span>`);
+    r.addEventListener("mousemove", f);
+    r.addEventListener("touchstart", f, { passive: true });
+    r.addEventListener("mouseleave", esconderDica);
+  });
+}
+
+function graficoLinha(el, pontos, { unidade = "" } = {}) {
+  if (pontos.length < 2) {
+    el.innerHTML = "<div class='g-vazio'>" + (pontos.length ? "Só um treino registrado até agora — a linha aparece a partir do segundo." : "Nenhum registro deste exercício ainda.") + "</div>";
+    return;
+  }
+  const { W, H, m, y, grade } = moldura(el, pontos, 220);
+  const passo = (W - m.l - m.r) / (pontos.length - 1);
+  const x = (i) => m.l + passo * i;
+  const d = pontos.map((p, i) => (i ? "L" : "M") + x(i) + "," + y(p.valor)).join(" ");
+  const area = d + ` L${x(pontos.length - 1)},${y(0)} L${x(0)},${y(0)} Z`;
+  const cada = Math.ceil(pontos.length / 6);
+  let marcas = "", rotulos = "";
+  pontos.forEach((p, i) => {
+    if (i % cada === 0 || i === pontos.length - 1)
+      rotulos += `<text x="${x(i)}" y="${H - 8}" class="g-eixo" text-anchor="middle">${escapar(p.rotulo)}</text>`;
+  });
+  const u = pontos.length - 1;
+  marcas = `<circle cx="${x(u)}" cy="${y(pontos[u].valor)}" r="5" fill="${COR_SERIE}" stroke="#fff" stroke-width="2"/>` +
+    `<text x="${x(u) - 8}" y="${y(pontos[u].valor) - 10}" class="g-valor" text-anchor="end">${fmt(pontos[u].valor, 1)} ${unidade}</text>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gráfico de linha">
+    ${grade}<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" class="g-base"/>
+    <path d="${area}" fill="${COR_SERIE}" opacity=".1"/>
+    <path d="${d}" fill="none" stroke="${COR_SERIE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${marcas}${rotulos}
+    <line class="g-mira" x1="0" x2="0" y1="${m.t}" y2="${y(0)}" visibility="hidden"/>
+    <rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" class="g-alvo"/></svg>`;
+  const svg = el.querySelector("svg"), mira = el.querySelector(".g-mira");
+  const mover = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const cx = ((ev.touches?.[0]?.clientX ?? ev.clientX) - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(u, Math.round((cx - m.l) / passo)));
+    mira.setAttribute("x1", x(i)); mira.setAttribute("x2", x(i)); mira.setAttribute("visibility", "visible");
+    const p = pontos[i];
+    mostrarDica(ev, `<b>${escapar(p.dica ?? p.rotulo)}</b><span>${fmt(p.valor, 1)} ${unidade}</span>`);
+  };
+  const alvo = el.querySelector(".g-alvo");
+  alvo.addEventListener("mousemove", mover);
+  alvo.addEventListener("touchstart", mover, { passive: true });
+  alvo.addEventListener("mouseleave", () => { esconderDica(); mira.setAttribute("visibility", "hidden"); });
+}
+document.addEventListener("scroll", esconderDica, true);
+
+/* =========================================================
+   CLASSIFICAÇÕES — as mesmas faixas do relatório mensal
+   ========================================================= */
+function classeACWR(m) {
+  if (!m.historico_suficiente || m.acwr === null || m.acwr === undefined)
+    return { txt: "aguardando histórico", cls: "", icone: "…" };
+  if (m.acwr > 1.5) return { txt: "risco alto", cls: "vermelho", icone: "▲" };
+  if (m.acwr > 1.3) return { txt: "acima da faixa", cls: "ambar", icone: "▲" };
+  if (m.acwr < 0.8) return { txt: "abaixo da faixa", cls: "ambar", icone: "▼" };
+  return { txt: "na faixa 0,8–1,3", cls: "verde", icone: "●" };
+}
+function classeMono(v) {
+  if (v === null || v === undefined) return { txt: "sem variação suficiente", cls: "" };
+  if (v > 2) return { txt: "alta — risco", cls: "vermelho" };
+  if (v >= 1) return { txt: "ideal", cls: "verde" };
+  return { txt: "baixa — boa variação", cls: "azul" };
+}
+function classeStrain(v) {
+  if (v === null || v === undefined) return { txt: "—", cls: "" };
+  if (v > 4500) return { txt: "alto", cls: "vermelho" };
+  if (v >= 2500) return { txt: "moderado (ideal)", cls: "verde" };
+  return { txt: "baixo", cls: "azul" };
+}
+
+/* =========================================================
+   ALERTAS DO PAINEL
+   ========================================================= */
+async function carregarAlertas() {
+  const tb = $("#tb-alertas");
+  if (!estado.alunos.length) {
+    tb.innerHTML = "<tr><td colspan='4' class='vazio'>Cadastre alunos para acompanhar a carga.</td></tr>";
+    $("#alertas-sub").textContent = "";
+    return;
+  }
+  const hoje = new Date().toISOString().slice(0, 10);
+  const desde = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const ck = await sb.from("checkins").select("aluno_id,data,tqr,dor").gte("data", desde).order("data", { ascending: false });
+  const checkins = ck.data ?? [];
+
+  const alertas = [];
+  await Promise.all(estado.alunos.map(async (a) => {
+    const r = await sb.rpc("metricas_carga", { _aluno: a.id });
+    if (!r.error && r.data) {
+      const m = r.data;
+      estado.metricas = estado.metricas ?? {};
+      estado.metricas[a.id] = m;
+      const c = classeACWR(m);
+      if (c.cls === "vermelho" || c.cls === "ambar")
+        alertas.push({ a, sinal: "ACWR " + c.txt, metrica: "ACWR " + fmt(m.acwr, 2), cls: c.cls, peso: c.cls === "vermelho" ? 3 : 2 });
+      if (m.monotonia > 2) alertas.push({ a, sinal: "Monotonia alta", metrica: fmt(m.monotonia, 2), cls: "vermelho", peso: 2 });
+      if (m.strain > 4500) alertas.push({ a, sinal: "Strain alto", metrica: fmt(m.strain) + " UA", cls: "vermelho", peso: 2 });
+    }
+    const seus = checkins.filter((x) => x.aluno_id === a.id);
+    if (seus.length >= 2 && seus[0].tqr !== null && seus[1].tqr !== null && seus[0].tqr < 10 && seus[1].tqr < 10)
+      alertas.push({ a, sinal: "Recuperação baixa 2 dias seguidos", metrica: "TQR " + seus[0].tqr + " e " + seus[1].tqr, cls: "vermelho", peso: 3 });
+    const deHoje = seus.find((x) => x.data === hoje);
+    const fortes = deHoje ? Object.entries(deHoje.dor || {}).filter(([, v]) => v >= 3).map(([k]) => REGIOES_DOR[k] ?? k) : [];
+    if (fortes.length) alertas.push({ a, sinal: "Dor forte hoje", metrica: fortes.join(", "), cls: "vermelho", peso: 3 });
+  }));
+
+  alertas.sort((x, y) => y.peso - x.peso);
+  $("#alertas-sub").textContent = alertas.length
+    ? alertas.length + (alertas.length === 1 ? " sinal" : " sinais") : "nenhum sinal agora";
+  tb.innerHTML = alertas.length
+    ? alertas.map((x) =>
+      "<tr><td><div class='quem-cel'><div class='av'>" + escapar(iniciais(x.a.nome)) + "</div><b>" + escapar(x.a.nome) + "</b></div></td>" +
+      "<td><span class='pill " + x.cls + "'>" + (x.cls === "vermelho" ? "⚠ " : "") + escapar(x.sinal) + "</span></td>" +
+      "<td class='mini'>" + escapar(x.metrica) + "</td>" +
+      "<td><button class='btn ghost sm' data-perfil='" + x.a.id + "'>ver</button></td></tr>").join("")
+    : "<tr><td colspan='4' class='vazio'>Tudo tranquilo: ninguém fora das faixas de carga nem com recuperação baixa.</td></tr>";
+  ligarPerfis();
+}
+
+function ligarPerfis() {
+  $$("[data-perfil]").forEach((b) => {
+    if (b.dataset.ligado) return;
+    b.dataset.ligado = "1";
+    b.addEventListener("click", () => abrirPerfil(b.dataset.perfil));
+  });
+}
+
+/* =========================================================
+   PERFIL DO ALUNO (só treinador)
+   ========================================================= */
+const REGIOES_DOR = {
+  pescoco: "Pescoço", ombro_d: "Ombro D", ombro_e: "Ombro E", cotovelo_punho: "Cotovelo/punho",
+  costas: "Costas", lombar: "Lombar", quadril: "Quadril/glúteo", coxa: "Coxa",
+  joelho_d: "Joelho D", joelho_e: "Joelho E", perna_tornozelo: "Panturrilha/tornozelo", outro: "Outro",
+};
+const NIVEL_DOR = ["", "leve", "moderada", "forte"];
+const FASES = { menstrual: "Menstruação", folicular: "Pós-menstruação", ovulatoria: "Ovulação", lutea: "Pré-menstrual", nao_sei: "Não sei" };
+const Q5_SONO = ["", "Péssima", "Ruim", "Ok", "Boa", "Ótima"];
+const Q5_BEM = ["", "Muito mal", "Mal", "Normal", "Bem", "Muito bem"];
+
+async function abrirPerfil(alunoId) {
+  const a = estado.alunos.find((x) => x.id === alunoId);
+  if (!a) return;
+  estado.perfilAberto = a;
+  irPara("perfil");
+  $("#pf-nome").textContent = a.nome;
+  $("#pf-sub").textContent = [a.objetivo, a.esporte, a.peso_kg ? a.peso_kg + " kg" : null].filter(Boolean).join(" · ") || "—";
+  $$(".so-f").forEach((el) => (el.hidden = a.sexo !== "F"));
+  $("#pf-stats").innerHTML = "<div class='carregando'>Calculando carga…</div>";
+  $("#pf-graf-carga").innerHTML = "";
+
+  const [m, ck, hist] = await Promise.all([
+    comTratamento(sb.rpc("metricas_carga", { _aluno: alunoId }), "Não consegui calcular a carga"),
+    comTratamento(sb.from("checkins").select("*").eq("aluno_id", alunoId)
+      .gte("data", new Date(Date.now() - 13 * 864e5).toISOString().slice(0, 10))
+      .order("data", { ascending: false }), "Não consegui carregar os check-ins"),
+    carregarHistoricoExercicios(alunoId),
+  ]);
+  if (estado.perfilAberto?.id !== alunoId) return; // trocou de aluno no meio
+  if (m.ok) desenharCarga(m.data);
+  if (ck.ok) desenharCheckinsTreinador(ck.data ?? [], a.sexo === "F");
+  desenharEvolucao();
+}
+$("#pf-voltar").addEventListener("click", () => irPara("alunos"));
+$("#pf-prescrever").addEventListener("click", () => {
+  if (estado.perfilAberto) $("#sel-aluno").value = estado.perfilAberto.id;
+  irPara("prescrever");
+});
+
+function desenharCarga(m) {
+  const ac = classeACWR(m), mo = classeMono(m.monotonia), st = classeStrain(m.strain);
+  const falta = m.dias_ate_acwr > 0 ? "liga em " + m.dias_ate_acwr + (m.dias_ate_acwr === 1 ? " dia" : " dias") : "precisa de 4 semanas de registro";
+  $("#pf-stats").innerHTML =
+    "<div class='stat'><div class='v'>" + fmt(m.carga_7d) + "</div><div class='l'>Carga 7 dias (UA)</div>" +
+      "<div class='d mini'>" + m.dias_7.filter((x) => x > 0).length + " dias com treino</div></div>" +
+    "<div class='stat'><div class='v'>" + (m.historico_suficiente ? fmt(m.acwr, 2) : "—") + "</div><div class='l'>ACWR</div>" +
+      "<div class='d'><span class='pill " + ac.cls + "'>" + ac.icone + " " + ac.txt + "</span>" +
+      (m.historico_suficiente ? "" : " <span class='mini'>" + falta + "</span>") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + fmt(m.monotonia, 2) + "</div><div class='l'>Monotonia</div>" +
+      "<div class='d'><span class='pill " + mo.cls + "'>" + mo.txt + "</span></div></div>" +
+    "<div class='stat'><div class='v'>" + fmt(m.strain) + "</div><div class='l'>Strain (UA)</div>" +
+      "<div class='d'><span class='pill " + st.cls + "'>" + st.txt + "</span></div></div>";
+
+  const pontos = (m.carga_28_dias ?? []).map((d) => {
+    const dt = new Date(d.dia + "T12:00:00");
+    return { rotulo: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), valor: Number(d.carga),
+      dica: dt.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }) };
+  });
+  graficoBarras($("#pf-graf-carga"), pontos, { unidade: "UA", rotuloCada: 7 });
+
+  $("#pf-semanas").innerHTML = (m.semanas ?? []).slice().reverse().map((s) => {
+    const seg = new Date(s.segunda + "T12:00:00");
+    const moS = classeMono(s.monotonia), stS = classeStrain(s.strain);
+    return "<tr><td>" + seg.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+      (s.parcial ? " <span class='pill'>em andamento</span>" : "") + "</td>" +
+      "<td><b>" + fmt(s.soma) + "</b> <span class='mini'>UA</span></td>" +
+      "<td>" + (s.parcial ? "<span class='mini'>fecha no domingo</span>" : fmt(s.monotonia, 2) + " <span class='pill " + moS.cls + "'>" + moS.txt + "</span>") + "</td>" +
+      "<td>" + (s.parcial ? "—" : fmt(s.strain) + (s.strain !== null ? " <span class='pill " + stS.cls + "'>" + stS.txt + "</span>" : "")) + "</td></tr>";
+  }).join("");
+}
+
+function desenharCheckinsTreinador(lista, feminino) {
+  const tb = $("#pf-checkins");
+  if (!lista.length) {
+    tb.innerHTML = "<tr><td colspan='7' class='vazio'>Nenhum check-in nos últimos 14 dias.</td></tr>";
+    return;
+  }
+  tb.innerHTML = lista.map((c) => {
+    const dores = Object.entries(c.dor || {}).filter(([, v]) => v > 0)
+      .map(([k, v]) => "<span class='pill " + (v >= 3 ? "vermelho" : v === 2 ? "ambar" : "") + "'>" + escapar(REGIOES_DOR[k] ?? k) + " · " + NIVEL_DOR[v] + "</span>").join(" ");
+    const tqrCls = c.tqr === null ? "" : c.tqr < 10 ? "vermelho" : c.tqr < 13 ? "ambar" : "verde";
+    return "<tr><td>" + new Date(c.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }) + "</td>" +
+      "<td>" + (c.sono_horas !== null ? fmt(c.sono_horas, 1) + " h" : "—") + "</td>" +
+      "<td class='mini'>" + (Q5_SONO[c.sono_qual] || "—") + "</td>" +
+      "<td class='mini'>" + (Q5_BEM[c.wellness] || "—") + "</td>" +
+      "<td>" + (c.tqr !== null ? "<span class='pill " + tqrCls + "'>" + c.tqr + "</span>" : "—") + "</td>" +
+      "<td>" + (dores || "<span class='mini'>sem dor</span>") + "</td>" +
+      "<td class='so-f mini'" + (feminino ? "" : " hidden") + ">" + (c.ciclo?.fase ? escapar(FASES[c.ciclo.fase] ?? c.ciclo.fase) + (c.ciclo.sintomas ? " · com sintomas" : "") : "—") + "</td></tr>";
+  }).join("");
+}
+
+/* ---------- histórico de carga por exercício ---------- */
+async function carregarHistoricoExercicios(alunoId) {
+  estado.histEx = {};
+  const sess = await sb.from("session_logs").select("id,data").eq("aluno_id", alunoId).eq("finalizada", true)
+    .order("data", { ascending: true }).limit(400);
+  if (sess.error || !sess.data?.length) return;
+  const dataDe = {};
+  sess.data.forEach((s) => (dataDe[s.id] = s.data));
+  const ids = sess.data.map((s) => s.id);
+  const sets = await sb.from("workout_sets").select("session_id,exercise_id,serie_num,carga_kg,reps,concluida")
+    .in("session_id", ids).eq("concluida", true);
+  if (sets.error) return erro("Não consegui carregar o histórico por exercício");
+  (sets.data ?? []).forEach((s) => {
+    const ex = (estado.histEx[s.exercise_id] ??= {});
+    const k = s.session_id;
+    const reg = (ex[k] ??= { data: dataDe[k], series: 0, volume: 0, melhor: null });
+    reg.series++;
+    const kg = Number(s.carga_kg) || 0, r = Number(s.reps) || 0;
+    reg.volume += kg * r;
+    if (!reg.melhor || kg > reg.melhor.kg || (kg === reg.melhor.kg && r > reg.melhor.reps)) reg.melhor = { kg, reps: r };
+  });
+  const sel = $("#pf-exercicio");
+  const nomes = Object.keys(estado.histEx)
+    .map((id) => ({ id, nome: estado.exercicios.find((e) => e.id === id)?.nome ?? "Exercício" }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  sel.innerHTML = nomes.length
+    ? nomes.map((n) => "<option value='" + n.id + "'>" + escapar(n.nome) + "</option>").join("")
+    : "<option value=''>sem registros ainda</option>";
+}
+$("#pf-exercicio").addEventListener("change", desenharEvolucao);
+
+function desenharEvolucao() {
+  const id = $("#pf-exercicio").value;
+  const reg = id && estado.histEx?.[id] ? Object.values(estado.histEx[id]).sort((a, b) => a.data.localeCompare(b.data)) : [];
+  $("#pf-ex-titulo").textContent = id ? (estado.exercicios.find((e) => e.id === id)?.nome ?? "Exercício") : "Nenhum exercício registrado ainda";
+  graficoLinha($("#pf-graf-ex"), reg.map((r) => {
+    const dt = new Date(r.data + "T12:00:00");
+    return { rotulo: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), valor: r.melhor?.kg ?? 0,
+      dica: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) + " · " + (r.melhor ? r.melhor.kg + " kg × " + r.melhor.reps : "") };
+  }), { unidade: "kg" });
+  $("#pf-ex-tabela").innerHTML = reg.length
+    ? reg.slice().reverse().map((r) => "<tr><td>" + new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR") + "</td><td>" + r.series +
+        "</td><td><b>" + (r.melhor ? fmt(r.melhor.kg, 1) + " kg × " + r.melhor.reps : "—") + "</b></td><td>" + fmt(r.volume) + " kg</td></tr>").join("")
+    : "<tr><td colspan='4' class='vazio'>Os registros aparecem quando o aluno concluir séries deste exercício.</td></tr>";
+}
+
+/* =========================================================
+   CHECK-IN MATINAL (aluno)
+   ========================================================= */
+const TQR_ROTULOS = { 6: "Nada recuperado", 7: "Extremamente mal", 9: "Muito mal", 11: "Mal", 13: "Razoável", 15: "Bem", 17: "Muito bem", 19: "Extremamente bem", 20: "Totalmente recuperado" };
+const hojeISO = () => {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+};
+
+async function carregarCheckinHoje() {
+  const r = await sb.from("checkins").select("*").eq("aluno_id", estado.usuario.id).eq("data", hojeISO()).maybeSingle();
+  al.checkinHoje = r.error ? null : r.data;
+  return al.checkinHoje;
+}
+
+function desenharCheckin() {
+  const c = al.checkinHoje ?? {};
+  const f = (al.ck = {
+    sono_horas: c.sono_horas ?? 7.5, sono_qual: c.sono_qual ?? null, wellness: c.wellness ?? null,
+    tqr: c.tqr ?? null, dor: { ...(c.dor ?? {}) }, ciclo: { fase: c.ciclo?.fase ?? "", sintomas: !!c.ciclo?.sintomas },
+  });
+  const escala = (campo, rotulos) => "<div class='escala5'>" + [1, 2, 3, 4, 5].map((n) =>
+    "<button type='button' data-esc='" + campo + ":" + n + "' class='" + (f[campo] === n ? "on" : "") + "'>" + rotulos[n] + "</button>").join("") + "</div>";
+  const feminino = estado.perfil.sexo === "F";
+
+  $("#checkin-form").innerHTML =
+    (c.id ? "<div class='ck-feito'>✓ Check-in de hoje já enviado — você pode ajustar e salvar de novo.</div>" : "") +
+    "<div class='ck-bloco'><h3>Quantas horas você dormiu?</h3>" +
+      "<div class='passo'><button type='button' data-sono='-0.5'>−</button><b id='ck-sono'>" + fmt(f.sono_horas, 1) + " h</b><button type='button' data-sono='0.5'>+</button></div></div>" +
+    "<div class='ck-bloco'><h3>Qualidade do sono</h3>" + escala("sono_qual", Q5_SONO) + "</div>" +
+    "<div class='ck-bloco'><h3>Como você está se sentindo?</h3>" + escala("wellness", Q5_BEM) + "</div>" +
+    "<div class='ck-bloco'><h3>Quanto você se sente recuperado?</h3><p class='mini'>Escala de 6 (nada) a 20 (totalmente recuperado)</p>" +
+      "<div class='tqr-grade'>" + Array.from({ length: 15 }, (_, k) => k + 6).map((n) =>
+        "<button type='button' data-tqr='" + n + "' class='" + (f.tqr === n ? "on" : "") + "'><b>" + n + "</b>" +
+        (TQR_ROTULOS[n] ? "<span>" + TQR_ROTULOS[n] + "</span>" : "") + "</button>").join("") + "</div></div>" +
+    "<div class='ck-bloco'><h3>Sente dor em algum lugar?</h3><p class='mini'>Toque para marcar: leve → moderada → forte → sem dor</p>" +
+      "<div class='dor-grade'>" + Object.entries(REGIOES_DOR).map(([k, nome]) =>
+        "<button type='button' data-dor='" + k + "' class='nivel-" + (f.dor[k] || 0) + "'>" + escapar(nome) +
+        "<span>" + (NIVEL_DOR[f.dor[k] || 0] || "") + "</span></button>").join("") + "</div></div>" +
+    (feminino ? "<div class='ck-bloco'><h3>Ciclo menstrual <span class='mini'>(opcional)</span></h3>" +
+      "<select id='ck-fase' class='select-topo' style='margin:0;max-width:none;width:100%'>" +
+      "<option value=''>Prefiro não informar</option>" +
+      Object.entries(FASES).map(([k, n]) => "<option value='" + k + "'" + (f.ciclo.fase === k ? " selected" : "") + ">" + n + "</option>").join("") +
+      "</select><label class='check' style='margin-top:10px'><input type='checkbox' id='ck-sintomas'" + (f.ciclo.sintomas ? " checked" : "") +
+      "> Com sintomas hoje (cólica, inchaço, dor de cabeça…)</label></div>" : "") +
+    "<div id='ck-erro' class='erro' hidden></div>" +
+    "<button class='btn bloco' id='ck-salvar'>Enviar check-in</button>";
+
+  $$("[data-sono]").forEach((b) => b.addEventListener("click", () => {
+    f.sono_horas = Math.max(0, Math.min(16, (Number(f.sono_horas) || 0) + Number(b.dataset.sono)));
+    $("#ck-sono").textContent = fmt(f.sono_horas, 1) + " h";
+  }));
+  $$("[data-esc]").forEach((b) => b.addEventListener("click", () => {
+    const [campo, n] = b.dataset.esc.split(":");
+    f[campo] = +n;
+    $$("[data-esc^='" + campo + ":']").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $$("[data-tqr]").forEach((b) => b.addEventListener("click", () => {
+    f.tqr = +b.dataset.tqr;
+    $$("[data-tqr]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $$("[data-dor]").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.dor, v = ((f.dor[k] || 0) + 1) % 4;
+    if (v) f.dor[k] = v; else delete f.dor[k];
+    b.className = "nivel-" + v;
+    b.querySelector("span").textContent = NIVEL_DOR[v];
+  }));
+  $("#ck-salvar").addEventListener("click", salvarCheckin);
+}
+
+async function salvarCheckin() {
+  const f = al.ck, e = $("#ck-erro");
+  e.hidden = true;
+  const falta = [!f.sono_qual && "qualidade do sono", !f.wellness && "como está se sentindo", !f.tqr && "recuperação"].filter(Boolean);
+  if (falta.length) { e.textContent = "Falta responder: " + falta.join(", ") + "."; e.hidden = false; return; }
+  const btn = $("#ck-salvar");
+  btn.disabled = true; btn.textContent = "Enviando…";
+  let ciclo = null;
+  if (estado.perfil.sexo === "F" && $("#ck-fase")?.value)
+    ciclo = { fase: $("#ck-fase").value, sintomas: $("#ck-sintomas").checked };
+  const r = await comTratamento(
+    sb.from("checkins").upsert({
+      aluno_id: estado.usuario.id, data: hojeISO(), sono_horas: f.sono_horas, sono_qual: f.sono_qual,
+      wellness: f.wellness, tqr: f.tqr, dor: f.dor, ciclo,
+    }, { onConflict: "aluno_id,data" }).select().single(),
+    "Não consegui enviar o check-in");
+  btn.disabled = false; btn.textContent = "Enviar check-in";
+  if (!r.ok) return;
+  const conf = await carregarCheckinHoje();   // relê do banco antes de confirmar
+  if (!conf || conf.tqr !== f.tqr) return erro("Enviei, mas não consegui confirmar. Tente de novo.");
+  bom("Check-in enviado. Bom treino hoje!");
+  desenharTreinosHoje();
+  telaAluno("hoje");
+}
+
+function bannerCheckin() {
+  return al.checkinHoje
+    ? "<div class='ck-banner feito'><b>✓ Check-in de hoje feito</b><button class='link-sutil' data-ir-ck>ajustar</button></div>"
+    : "<div class='ck-banner'><div><b>Como você acordou hoje?</b><span>Faça o check-in antes do treino — leva um minuto.</span></div>" +
+      "<button class='btn sm' data-ir-ck>Fazer check-in</button></div>";
+}
+
+function ligarBannerCheckin() {
+  $$("[data-ir-ck]").forEach((b) => b.addEventListener("click", () => telaAluno("checkin")));
+}
+
+/* vídeo que não carrega vira aviso, em vez de ficar girando para sempre */
+function protegerVideos(raiz = document) {
+  raiz.querySelectorAll("video").forEach((v) => {
+    if (v.dataset.protegido) return;
+    v.dataset.protegido = "1";
+    v.addEventListener("error", () => {
+      const aviso = document.createElement("div");
+      aviso.className = "sem-video-ex";
+      aviso.textContent = "vídeo indisponível no momento — confira sua conexão";
+      v.replaceWith(aviso);
+    });
+  });
 }
