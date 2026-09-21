@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css">
+<link rel="stylesheet" href="./estilo.css?v=4">
 </head>
 <body>
 
@@ -149,6 +149,11 @@
         <div class="builder">
           <div class="wk-canvas">
             <input class="wk-name" id="in-nome-treino" placeholder="Nome do treino (ex.: Push A — peito, ombro, tríceps)">
+            <div class="onda-cfg">
+              <label>Duração <select id="sel-semanas"></select></label>
+              <label>Frequência <select id="sel-freq"></select></label>
+              <span class="mini" id="onda-dica">Séries fixas — escolha mais de 1 semana para ondular.</span>
+            </div>
             <div id="lista-ex"></div>
             <div class="empty" id="vazio-treino">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M6 7l6-3 6 3v10l-6 3-6-3z"/></svg>
@@ -278,6 +283,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js"></script>
+<script type="module" src="./app.js?v=4"></script>
 </body>
 </html>
