@@ -422,3 +422,13 @@ tr:last-child td{border-bottom:0}
   .stat .v{font-size:24px}
   .esconde-mob{display:none}
 }
+
+/* ---------- ondulação semanal ---------- */
+.onda-cfg{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:-4px 0 16px;
+  background:var(--g1);border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 14px}
+.onda-cfg label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text-dim)}
+.onda-cfg select{background:var(--g2);border:1px solid var(--line);border-radius:8px;color:var(--text);
+  padding:6px 9px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.semana-faixa{background:var(--azul-soft);border-radius:var(--r-sm);padding:10px 13px;margin:-4px 0 14px}
+.semana-faixa b{display:block;color:var(--azul-dim);font-size:15px}
+.semana-faixa span{font-size:12px;color:var(--text-dim)}
