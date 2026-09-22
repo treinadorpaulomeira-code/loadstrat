@@ -166,6 +166,7 @@ function irPara(pagina) {
   $$(".navitem").forEach((b) => b.classList.toggle("on", b.dataset.nav === pagina));
   $("#main").scrollTo(0, 0);
   window.scrollTo(0, 0);
+  if (pagina === "dash") carregarProntidao();
   if (pagina === "biblioteca") desenharBiblioteca();
   if (pagina === "periodizacao" && !$("#per-aluno").options.length) montarPeriodizacao();
 }
@@ -186,6 +187,7 @@ async function iniciarPainel() {
   desenharChips();
   await Promise.all([carregarAlunos(), carregarExercicios()]);
   await carregarResumo();
+  carregarProntidao();
   carregarAlertas();
 }
 
@@ -1107,6 +1109,7 @@ function telaAluno(qual) {
   if (qual === "extra") { desenharExtraForm(); carregarExtrasAluno(); }
   if (qual === "agua") desenharAgua();
   if (qual === "calendario") abrirCalendario();
+  if (qual === "progresso") abrirProgresso();
 }
 $$("[data-tela-nav]").forEach((b) =>
   b.addEventListener("click", () => telaAluno(b.dataset.telaNav)));
@@ -1200,6 +1203,7 @@ const ICONE = {
   extra: "<circle cx='13' cy='4' r='2'/><path d='M7 21l3-6 3 2v4M10 15l1-5 4 3 3 1M8 11l3-1'/>",
   agua: "<path d='M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z'/>",
   calendario: "<rect x='3' y='4' width='18' height='17' rx='2'/><path d='M3 9h18M8 2v4M16 2v4'/>",
+  progresso: "<path d='M3 17l5-5 4 3 7-7'/><path d='M14 8h5v5'/>",
 };
 const svgIcone = (k) => "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" + ICONE[k] + "</svg>";
 
@@ -1215,13 +1219,14 @@ function desenharAtalhosAluno() {
       (ag.meta ? "<span class='selo" + (ag.ml >= ag.meta ? " verde" : "") + "'>" + fmtNum(ag.ml / 1000) + " / " + fmtNum(ag.meta / 1000) + " L</span>" : "") +
       "<b>Hidratação</b></button>" +
     "<button class='atalho' data-atalho='extra'>" + svgIcone("extra") + "<b>Treino extra</b><small>Corrida, yoga, pelada…</small></button>" +
+    "<button class='atalho' data-atalho='progresso'>" + svgIcone("progresso") + "<b>Minha progressão</b><small>Evolução das cargas</small></button>" +
     "<button class='atalho' data-atalho='calendario'>" + svgIcone("calendario") + "<b>Meu calendário</b></button>" +
     "<button class='atalho' data-atalho='historico'>" + svgIcone("historico") + "<b>Meu histórico</b></button>";
   $$("[data-atalho='executar']").forEach((b) => b.addEventListener("click", () => {
     if (!al.treinos.length) return;
     comecarTreino((al.treinos.find((t) => t.data === hojeISO()) ?? al.treinos[0]).id);
   }));
-  ["historico", "agua", "extra", "calendario"].forEach((t) =>
+  ["historico", "agua", "extra", "calendario", "progresso"].forEach((t) =>
     $$("[data-atalho='" + t + "']").forEach((b) => b.addEventListener("click", () => telaAluno(t))));
   ligarBannerCheckin();
 }
@@ -2951,4 +2956,177 @@ function desenharMesCal() {
     $("#cal-dia").innerHTML = "<div class='cal-det'><b>" + new Date(b.dataset.dia + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }) + "</b>" +
       itens.map((x) => "<div>" + escapar(x.nome) + " · " + (x.min ? x.min + " min · " : "") + "esforço " + rotuloPSE(x.pse) + "</div>").join("") + "</div>";
   }));
+}
+
+/* =========================================================
+   PRONTIDÃO DO DIA (TQR) — quem está recuperado para treinar
+   TQR 6–20 (Kenttä & Hassmén): quanto maior, mais recuperado.
+   ========================================================= */
+const faixaTQR = (t) =>
+  t == null ? { cls: "", txt: "sem check-in" }
+  : t <= 9 ? { cls: "vermelho", txt: "baixa", icone: "⚠ " }
+  : t <= 13 ? { cls: "ambar", txt: "média", icone: "" }
+  : t <= 16 ? { cls: "verde", txt: "boa", icone: "" }
+  : { cls: "verde", txt: "ótima", icone: "" };
+
+function barrinhasTQR(porDia, dias) {
+  return "<div class='spark'>" + dias.map((d) => {
+    const c = porDia[d];
+    const t = c?.tqr ?? null;
+    const f = faixaTQR(t);
+    const alt = t == null ? 0 : Math.max(12, Math.round(((t - 6) / 14) * 100));
+    const rot = new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    return "<i class='" + (t == null ? "vazio" : f.cls) + "' style='--h:" + alt + "%' title='" +
+      rot + ": " + (t == null ? "sem check-in" : "TQR " + t + " · " + f.txt) + "'></i>";
+  }).join("") + "</div>";
+}
+
+async function carregarProntidao() {
+  const tb = $("#tb-prontidao");
+  if (!tb) return;
+  if (!estado.alunos.length) {
+    tb.innerHTML = "<tr><td colspan='6' class='vazio'>Cadastre alunos para acompanhar a prontidão.</td></tr>";
+    $("#pront-sub").textContent = "";
+    return;
+  }
+  const dias = Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - k));
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  });
+  const hoje = dias[6], ontem = dias[5];
+  const r = await comTratamento(
+    sb.from("checkins").select("aluno_id,data,tqr,dor,sono_horas,sono_qual,wellness").gte("data", dias[0]),
+    "Não consegui carregar os check-ins de hoje");
+  if (!r.ok) return;
+
+  const por = {};
+  (r.data ?? []).forEach((c) => ((por[c.aluno_id] ??= {})[c.data] = c));
+  const linhas = estado.alunos.map((a) => {
+    const meus = por[a.id] ?? {};
+    const c = meus[hoje] ?? null;
+    const ant = meus[ontem] ?? null;
+    const delta = c?.tqr != null && ant?.tqr != null ? c.tqr - ant.tqr : null;
+    const dores = Object.entries(c?.dor ?? {}).filter(([, v]) => v > 0)
+      .sort((x, y) => y[1] - x[1]).map(([k, v]) => (REGIOES_DOR[k] ?? k) + " · " + NIVEL_DOR[v]);
+    return { a, c, delta, dores, meus, ordem: c?.tqr ?? 99 };
+  }).sort((x, y) => x.ordem - y.ordem || x.a.nome.localeCompare(y.a.nome, "pt-BR"));
+
+  const responderam = linhas.filter((l) => l.c).length;
+  const baixos = linhas.filter((l) => l.c?.tqr != null && l.c.tqr <= 9).length;
+  $("#pront-sub").textContent = responderam + " de " + linhas.length + " fizeram o check-in hoje" +
+    (baixos ? " · " + baixos + (baixos === 1 ? " com prontidão baixa" : " com prontidão baixa") : "");
+
+  tb.innerHTML = linhas.map((l) => {
+    const f = faixaTQR(l.c?.tqr ?? null);
+    const seta = l.delta == null || l.delta === 0 ? "" :
+      "<span class='mini delta " + (l.delta > 0 ? "sobe" : "desce") + "'>" + (l.delta > 0 ? "▲ +" : "▼ ") + l.delta + " vs ontem</span>";
+    return "<tr><td><div class='quem-cel'><div class='av'>" + escapar(iniciais(l.a.nome)) + "</div><b>" + escapar(l.a.nome) + "</b></div></td>" +
+      "<td>" + (l.c?.tqr != null
+        ? "<div class='tqr-cel'><b>" + l.c.tqr + "</b><span class='pill " + f.cls + "'>" + (f.icone ?? "") + f.txt + "</span>" + seta +
+          (TQR_ROTULOS[l.c.tqr] ? "<span class='mini'>" + TQR_ROTULOS[l.c.tqr] + "</span>" : "") + "</div>"
+        : "<span class='mini'>sem check-in hoje</span>") + "</td>" +
+      "<td class='mini'>" + (l.c?.sono_horas != null ? fmt(l.c.sono_horas, 1) + " h" + (l.c.sono_qual ? " · " + Q5_SONO[l.c.sono_qual].toLowerCase() : "") : "—") + "</td>" +
+      "<td class='mini'>" + (l.dores.length ? escapar(l.dores.slice(0, 2).join(", ")) + (l.dores.length > 2 ? " +" + (l.dores.length - 2) : "") : "sem dor") + "</td>" +
+      "<td>" + barrinhasTQR(l.meus, dias) + "</td>" +
+      "<td class='acoes-linha'><button class='btn ghost sm' data-pront='" + l.a.id + "'>ver aluno</button></td></tr>";
+  }).join("");
+  $$("[data-pront]").forEach((b) => b.addEventListener("click", () => abrirPerfil(b.dataset.pront)));
+}
+
+/* =========================================================
+   MINHA PROGRESSÃO (aluno) — carga externa por exercício.
+   O aluno vê kg, reps, tempo e volume: o que ele mesmo levantou.
+   Nada de UA, ACWR, monotonia ou strain aqui.
+   ========================================================= */
+const prog = { dados: null, ex: null };
+
+async function abrirProgresso() {
+  const alvo = $("#prog-corpo");
+  if (!prog.dados) alvo.innerHTML = "<div class='carregando'>Carregando sua evolução…</div>";
+  const sess = await comTratamento(
+    sb.from("session_logs").select("id,data").eq("aluno_id", estado.usuario.id).eq("finalizada", true)
+      .order("data", { ascending: true }).limit(300),
+    "Não consegui carregar seus treinos");
+  if (!sess.ok) return;
+  const lista = sess.data ?? [];
+  if (!lista.length) {
+    prog.dados = {};
+    alvo.innerHTML = "<div class='vazio-hoje'><b>Ainda não há treinos concluídos</b>Termine um treino e sua evolução começa a aparecer aqui.</div>";
+    return;
+  }
+  const dataDe = {}; lista.forEach((x) => (dataDe[x.id] = x.data));
+  const sets = await comTratamento(
+    sb.from("workout_sets").select("session_id,exercise_id,carga_kg,reps,tempo_s,dist_m")
+      .in("session_id", lista.map((x) => x.id)).eq("concluida", true),
+    "Não consegui carregar suas séries");
+  if (!sets.ok) return;
+
+  const dados = {};
+  (sets.data ?? []).forEach((s) => {
+    const ex = (dados[s.exercise_id] ??= {});
+    const d = (ex[s.session_id] ??= { data: dataDe[s.session_id], series: 0, volume: 0, melhor: null });
+    d.series++;
+    const kg = Number(s.carga_kg) || 0, r = Number(s.reps) || 0, t = Number(s.tempo_s) || 0, dm = Number(s.dist_m) || 0;
+    d.volume += kg * r;
+    const m = d.melhor;
+    if (!m || kg > m.kg || (kg === m.kg && (r > m.reps || t > m.t || dm > m.d)))
+      d.melhor = { kg, reps: r, t, d: dm, txt: descreverSerie(s) };
+  });
+  prog.dados = dados;
+  if (!prog.ex || !dados[prog.ex]) {
+    const ids = Object.keys(dados);
+    prog.ex = ids.sort((a, b) => Object.keys(dados[b]).length - Object.keys(dados[a]).length)[0] ?? null;
+  }
+  desenharProgresso();
+}
+
+function desenharProgresso() {
+  const alvo = $("#prog-corpo");
+  const nomes = Object.keys(prog.dados ?? {})
+    .map((id) => ({ id, nome: al.exercicios[id]?.nome ?? "Exercício", n: Object.keys(prog.dados[id]).length }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  if (!nomes.length) {
+    alvo.innerHTML = "<div class='vazio-hoje'><b>Nada registrado ainda</b>Marque as séries durante o treino e a evolução aparece aqui.</div>";
+    return;
+  }
+  const reg = Object.values(prog.dados[prog.ex]).sort((a, b) => a.data.localeCompare(b.data));
+  const eixo = reg.some((r) => r.melhor?.kg) ? ["kg", "kg", "maior carga de cada treino"]
+    : reg.some((r) => r.melhor?.t) ? ["t", "s", "maior tempo de cada treino"]
+    : reg.some((r) => r.melhor?.d) ? ["d", "m", "maior distância de cada treino"] : ["reps", "reps", "mais repetições de cada treino"];
+  const valores = reg.map((r) => r.melhor?.[eixo[0]] ?? 0);
+  const primeiro = valores.find((v) => v > 0) ?? 0;
+  const ultimo = [...valores].reverse().find((v) => v > 0) ?? 0;
+  const varPct = primeiro > 0 ? Math.round(((ultimo - primeiro) / primeiro) * 100) : null;
+  const recorde = Math.max(0, ...valores);
+  const volumeTotal = reg.reduce((s, r) => s + r.volume, 0);
+  const unid = eixo[1] === "s" ? "" : " " + eixo[1];
+  const mostra = (v) => (eixo[1] === "s" ? fmtTempo(v) : fmt(v, v % 1 ? 1 : 0) + unid);
+
+  alvo.innerHTML =
+    "<label class='campo'><span>Exercício</span><select id='prog-sel'>" +
+      nomes.map((n) => "<option value='" + n.id + "'" + (n.id === prog.ex ? " selected" : "") + ">" + escapar(n.nome) +
+        " (" + n.n + (n.n === 1 ? " treino" : " treinos") + ")</option>").join("") + "</select></label>" +
+    "<div class='prog-cards'>" +
+      "<div class='prog-card'><b>" + mostra(ultimo) + "</b><span>última vez</span></div>" +
+      "<div class='prog-card'><b>" + mostra(recorde) + "</b><span>seu recorde</span></div>" +
+      (varPct != null && reg.length > 1
+        ? "<div class='prog-card " + (varPct > 0 ? "sobe" : varPct < 0 ? "desce" : "") + "'><b>" + (varPct > 0 ? "+" : "") + varPct + "%</b><span>desde o 1º treino</span></div>"
+        : "<div class='prog-card'><b>" + reg.length + "</b><span>" + (reg.length === 1 ? "treino" : "treinos") + "</span></div>") +
+    "</div>" +
+    "<div class='ck-bloco'><div class='card-tit'><h3>" + escapar(al.exercicios[prog.ex]?.nome ?? "") + "</h3><span class='mini'>" + eixo[2] + "</span></div>" +
+      "<div class='grafico' id='prog-graf'></div></div>" +
+    (volumeTotal ? "<p class='mini prog-vol'>Volume acumulado neste exercício: <b>" + fmt(volumeTotal) + " kg</b> levantados (carga × repetições).</p>" : "") +
+    "<div class='sechd'><h2>Treino a treino</h2><span class='mini'>mais recente primeiro</span></div>" +
+    "<div id='prog-lista'>" + reg.slice().reverse().map((r) =>
+      "<div class='hist-item'><div class='linha1'><b>" + (r.melhor?.txt ?? "—") + "</b><span class='pill'>" +
+      new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + "</span></div>" +
+      "<div class='dados'>" + r.series + (r.series === 1 ? " série" : " séries") +
+      (r.volume ? " · " + fmt(r.volume) + " kg de volume" : "") + "</div></div>").join("") + "</div>";
+
+  graficoLinha($("#prog-graf"), reg.map((r) => {
+    const dt = new Date(r.data + "T12:00:00");
+    return { rotulo: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), valor: r.melhor?.[eixo[0]] ?? 0,
+      dica: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) + " · " + (r.melhor?.txt ?? "") };
+  }), { unidade: eixo[1] });
+  $("#prog-sel").addEventListener("change", (e) => { prog.ex = e.target.value; desenharProgresso(); });
 }
