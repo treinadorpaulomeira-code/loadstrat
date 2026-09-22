@@ -2729,7 +2729,7 @@ async function desenharExtrasEAgua(alunoId) {
     "<div class='agua-col'><i style='height:" + Math.min(100, Math.round(pct[k] * 100)) + "%'></i></div>" +
     "<span>" + ["D", "S", "T", "Q", "Q", "S", "S"][new Date(d + "T12:00:00").getDay()] + "</span></div>").join("") + "</div>" +
     "<p class='mini'>" + (comReg.length ? "Média " + Math.round(comReg.reduce((a, b) => a + Math.min(1, b), 0) / comReg.length * 100) +
-      "% da meta nos " + comReg.length + " dias com registro." : "Nenhum registro de água nesta semana.") + "</p>";
+      "% da meta " + (comReg.length === 1 ? "no único dia com registro." : "nos " + comReg.length + " dias com registro.") : "Nenhum registro de água nesta semana.") + "</p>";
 }
 
 /* =========================================================
