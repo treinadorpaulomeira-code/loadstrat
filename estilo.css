@@ -709,3 +709,36 @@ tbody tr:hover td{background:rgba(47,151,239,.035)}
   .topbar .btn{padding:10px 14px;font-size:14px}
 }
 @media(max-width:820px){.card.pad0{overflow-x:auto}.card.pad0 table{min-width:520px}}
+
+/* ---------- exercício: vídeo por YouTube ou arquivo ---------- */
+.vid-modos{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-bottom:12px}
+.vid-modos button{display:flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid var(--line);background:var(--g1);
+  color:var(--text-dim);border-radius:12px;padding:10px 8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.vid-modos button svg{width:17px;height:17px;flex-shrink:0}
+.vid-modos button[data-vmodo='youtube'] svg{color:#e0322b}
+.vid-modos button.on{border-color:var(--azul);background:var(--azul-soft);color:var(--azul-dim)}
+.vid-painel input#e-yt{width:100%;background:var(--g2);border:1px solid var(--line);border-radius:14px;padding:13px 15px;font-size:15px;color:var(--text)}
+.vid-painel input#e-yt:focus{outline:none;border-color:var(--azul);background:var(--g1)}
+.vid-dica{margin:6px 2px 10px}
+.aviso-yt{color:#a33f31;margin-top:4px}
+.soltar{display:flex;flex-direction:column;align-items:center;gap:4px;border:2px dashed var(--g4);border-radius:16px;padding:20px 14px;
+  cursor:pointer;background:var(--g2);text-align:center;color:var(--text-dim)}
+.soltar:hover{border-color:var(--azul);background:var(--azul-soft)}
+.soltar input{position:absolute;width:1px;height:1px;opacity:0}
+.soltar svg{width:28px;height:28px;color:var(--azul);margin-bottom:4px}
+.soltar b{font-size:15px;color:var(--text);word-break:break-all}
+.soltar span{font-size:12px;color:var(--text-faint)}
+.vid-prev{width:100%;border-radius:14px;margin-top:10px;display:block;background:#000;max-height:260px}
+.yt{position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden}
+.yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yt.vid-prev{max-height:none}
+.yt.video-ex{border-radius:var(--r-sm);margin-bottom:14px}
+.card-ex .thumb .yt{height:100%;aspect-ratio:auto}
+.tag-yt{position:absolute;top:8px;left:8px;background:#e0322b;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;pointer-events:none}
+.lib-busca-linha{display:flex;gap:8px;align-items:flex-start}
+.lib-busca-linha .lib-search{flex:1}
+.lib-busca-linha .btn{border-radius:99px;padding:10px 14px}
+.atalho .selo{font-size:11px}
+.vid-modos{grid-template-columns:1fr 1fr}
+.vid-modos [data-vmodo='manter'],.vid-modos [data-vmodo='nenhum']{padding:7px;font-size:12px;border-style:dashed}
+.vid-painel{margin-bottom:4px}
