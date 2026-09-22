@@ -742,3 +742,57 @@ tbody tr:hover td{background:rgba(47,151,239,.035)}
 .vid-modos{grid-template-columns:1fr 1fr}
 .vid-modos [data-vmodo='manter'],.vid-modos [data-vmodo='nenhum']{padding:7px;font-size:12px;border-style:dashed}
 .vid-painel{margin-bottom:4px}
+
+/* ---------- cronômetro (descanso e séries por tempo) ---------- */
+.cel-tempo{position:relative}
+.cel-tempo input{padding-right:40px !important}
+.cel-tempo .play{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:10px;border:0;
+  background:var(--azul);color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px var(--azul-glow)}
+.cel-tempo .play svg{width:16px;height:16px;margin-left:2px}
+.serie-linha.feita .cel-tempo .play{background:var(--verde);box-shadow:none}
+.rodape-ex{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}
+.rodape-ex .ultima-vez{margin:0}
+.rodape-ex .btn svg{width:16px;height:16px}
+
+.timer{position:fixed;inset:0;z-index:95;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(15,27,43,.45);backdrop-filter:blur(4px)}
+.timer-card{width:100%;max-width:520px;background:var(--g1);border-radius:28px 28px 0 0;
+  padding:14px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(16,34,64,.18);animation:sobeTimer .25s ease-out}
+@keyframes sobeTimer{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.timer-topo{display:flex;align-items:center;gap:8px}
+.timer-tit{flex:1;text-align:center;min-width:0}
+.timer-tit b{display:block;font-size:18px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timer-tit span{display:block;font-size:13px;color:var(--text-faint);min-height:18px}
+.timer-ic{width:40px;height:40px;border-radius:12px;border:0;background:var(--g2);color:var(--text-dim);display:grid;place-items:center;cursor:pointer;flex-shrink:0}
+.timer-ic svg{width:20px;height:20px}
+.timer-anel{position:relative;width:min(68vw,250px);aspect-ratio:1;margin:14px auto 10px}
+.timer-anel svg{width:100%;height:100%;transform:rotate(-90deg)}
+.timer-anel circle{fill:none;stroke-width:12}
+.timer-anel .fundo{stroke:var(--g3)}
+.timer-anel .arco{stroke:var(--azul);stroke-linecap:round;transition:stroke-dashoffset .2s linear}
+.timer[data-fase='preparo'] .arco{stroke:var(--ambar)}
+.timer[data-fase='trabalho'] .arco,.timer[data-fase='livre'] .arco{stroke:#3f9d5c}
+.timer.pausado .arco{stroke:var(--g4)}
+.timer-meio{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.timer-meio span{font-size:14px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;min-height:20px}
+.timer-meio b{font-size:clamp(46px,15vw,64px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.05}
+.timer[data-fase='preparo'] .timer-meio b{font-size:clamp(70px,24vw,96px);color:#9a7115}
+.timer.pausado .timer-meio b{color:var(--text-faint)}
+.timer-ajuste{display:flex;justify-content:center;gap:10px;margin-bottom:16px}
+.timer-ajuste button{border:1.5px solid var(--line);background:var(--g1);border-radius:99px;padding:8px 18px;font-weight:700;font-size:14px;color:var(--text-dim);cursor:pointer;font-family:inherit}
+.timer:not([data-fase='contagem']) .timer-ajuste{visibility:hidden}
+.timer-acoes{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+.timer-acoes .btn{padding:15px;font-size:16px;border-radius:16px}
+.timer[data-fase='preparo'] #timer-pausar{visibility:hidden}
+
+/* minimizado: vira a pílula sobre a barra inferior, o aluno continua anotando as cargas */
+.timer-mini{display:none}
+.timer.mini{inset:auto 0 calc(84px + env(safe-area-inset-bottom)) 0;background:none;backdrop-filter:none;pointer-events:none}
+.timer.mini .timer-card{display:none}
+.timer.mini .timer-mini{display:flex;pointer-events:auto;align-items:center;gap:10px;background:var(--azul-dim);color:#fff;
+  border-radius:99px;padding:10px 12px 10px 16px;box-shadow:0 8px 26px rgba(20,40,70,.3);cursor:pointer}
+.timer-mini svg{width:20px;height:20px}
+.timer-mini b{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.timer-mini span{font-size:12px;opacity:.75;text-transform:uppercase;letter-spacing:.8px}
+.timer-mini button{background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:99px;padding:6px 13px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.timer-card{animation:none}.timer-anel .arco{transition:none}}
