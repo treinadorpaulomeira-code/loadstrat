@@ -4,15 +4,17 @@
   --azul:#2f97ef; --azul-dim:#1455b0; --azul-soft:rgba(47,151,239,.14); --azul-glow:rgba(47,151,239,.28);
   --text:#0f1b2b; --text-dim:#53627a; --text-faint:#8a97ac;
   --verde:#5fb87a; --ambar:#e0a93b; --vermelho:#d96a5a; --roxo:#a98fd6;
-  --r:16px; --r-sm:10px; --r-lg:22px;
+  --r:20px; --r-sm:12px; --r-lg:26px;
+  --sombra:0 1px 2px rgba(16,34,64,.04),0 8px 24px rgba(16,34,64,.06);
+  --sombra-forte:0 2px 4px rgba(16,34,64,.05),0 14px 34px rgba(16,34,64,.10);
   --sidebar:248px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
   background:var(--g0); color:var(--text);
-  font-family:"EB Garamond","Garamond","Adobe Garamond Pro",Georgia,"Times New Roman",serif;
-  -webkit-font-smoothing:antialiased; line-height:1.5;
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased; line-height:1.5; font-feature-settings:"cv11","ss01";
 }
 @media (prefers-reduced-motion:no-preference){
   .navitem,.btn,.chip,.libitem,.card-ex{transition:background-color .16s,border-color .16s,color .16s,transform .16s}
@@ -491,3 +493,219 @@ tr:last-child td{border-bottom:0}
 .dor-grade .nivel-3{background:var(--vermelho);border-color:var(--vermelho);color:#fff}
 .aluno-nav button{font-size:11px}
 #pf-prescrever{margin-left:0}
+
+
+/* ==========================================================
+   ACABAMENTO v2 — cards grandes, sem borda, tipografia sem serifa
+   ========================================================== */
+h1,h2,h3,.stat .v,.treino-card h2{letter-spacing:-.02em}
+input,select,textarea{font-family:inherit}
+
+/* botões: mais altos, raio maior */
+.btn{border-radius:14px;padding:12px 20px;font-weight:700;font-size:15px}
+.btn.sm{padding:9px 14px;font-size:13px;border-radius:11px}
+.btn.bloco{padding:15px;font-size:16px;border-radius:16px}
+.btn .chev{font-size:20px;line-height:0;margin-left:2px;transform:translateY(-1px)}
+
+/* superfícies: brancas, sem borda, com sombra suave */
+.card,.stat,.exblock,.exlib-panel,.card-ex,.hist-item,.ck-bloco,.ex-card,.login-card,.onda-cfg,.modal{
+  border:0;box-shadow:var(--sombra)}
+.stat{background:var(--g1);padding:20px 22px;border-radius:var(--r)}
+.stat .ic{width:40px;height:40px;border-radius:12px;background:var(--azul-soft);color:var(--azul);right:16px;top:16px}
+.stat .ic svg{width:21px;height:21px}
+.stat .v{font-size:32px;font-weight:800}
+.stat .l{font-size:12px;font-weight:600;letter-spacing:.4px}
+.sechd h2{font-size:18px;font-weight:800;letter-spacing:-.02em}
+.card-tit h2{font-size:16px}
+th{font-size:11px;letter-spacing:.5px;font-weight:700;background:var(--g2)}
+td{font-size:14px}
+tbody tr:hover td{background:rgba(47,151,239,.035)}
+.pill{font-weight:700;padding:4px 10px}
+
+/* ---------- atalhos (tiles) ---------- */
+.atalhos{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:18px}
+.atalho{
+  position:relative;background:var(--g1);border:0;border-radius:var(--r);box-shadow:var(--sombra);
+  min-height:132px;padding:20px 18px 18px;text-align:left;cursor:pointer;color:var(--text);
+  display:flex;flex-direction:column;justify-content:space-between;gap:14px;font-family:inherit;
+}
+.atalho svg{width:32px;height:32px;color:var(--azul)}
+.atalho b{font-size:17px;font-weight:600;line-height:1.2;letter-spacing:-.01em}
+.atalho small{display:block;font-size:12px;color:var(--text-faint);margin-top:-8px;line-height:1.3}
+.atalho:hover{box-shadow:var(--sombra-forte);transform:translateY(-1px)}
+.atalho:active{transform:scale(.98)}
+.atalho:disabled{opacity:.5;cursor:default;transform:none;box-shadow:var(--sombra)}
+.selo{position:absolute;top:14px;right:14px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:8px;
+  border:1.5px solid var(--azul);color:var(--azul-dim);background:var(--azul-soft)}
+.selo.verde{border-color:#3f9d5c;color:#2f7c48;background:rgba(95,184,122,.1)}
+@media (prefers-reduced-motion:no-preference){.atalho{transition:box-shadow .18s,transform .18s}}
+
+/* ---------- painel do treinador ---------- */
+.side{border-right:0;box-shadow:1px 0 0 var(--line)}
+.logo b{font-size:19px;font-weight:900;letter-spacing:.5px}
+.navitem{padding:12px 14px;border-radius:14px;font-size:15px;font-weight:600;border:0}
+.navitem.on{background:var(--azul-soft);color:var(--azul-dim);border:0;font-weight:700}
+.navitem.on svg{color:var(--azul)}
+.topbar{background:rgba(255,255,255,.92);border-bottom:2px solid var(--azul);padding:18px 32px}
+.topbar h1{font-size:22px;font-weight:800}
+.side .foot{border-top:1px solid var(--line-soft)}
+.wk-name{border:0;box-shadow:var(--sombra);border-radius:var(--r-sm);font-size:18px}
+.exhd{background:var(--g1);border-bottom:1px solid var(--line-soft)}
+.libitem{background:var(--g1);border:1px solid var(--line-soft);border-radius:14px}
+.libitem:hover{border-color:var(--azul);box-shadow:var(--sombra)}
+.lib-search,.select-topo{border-radius:14px}
+.lib-search{border-radius:99px}
+.card-ex .thumb{background:var(--g2)}
+.empty{border-radius:var(--r);background:rgba(255,255,255,.5)}
+
+/* ---------- login ---------- */
+.login-card{padding:40px 32px;border-radius:28px;box-shadow:var(--sombra-forte);border-top:3px solid var(--azul)}
+.logo-grande b{font-size:28px;font-weight:900;letter-spacing:.5px}
+.campo span{font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:none;color:var(--text-dim)}
+.campo input,.campo select,.campo textarea{border-radius:14px;padding:14px 16px;font-size:16px}
+
+/* ==========================================================
+   APP DO ALUNO v2
+   ========================================================== */
+.aluno-app{background:var(--g0);border:0}
+@media(min-width:521px){.aluno-app{box-shadow:0 0 0 1px var(--line)}}
+.aluno-topo{
+  display:grid;grid-template-columns:40px 1fr 40px;align-items:center;
+  background:rgba(255,255,255,.96);border-bottom:2px solid var(--azul);padding:14px 16px;
+}
+.aluno-topo .marca-mini{justify-content:center}
+.marca-mini b{font-size:20px;font-weight:900;letter-spacing:.3px}
+.marca-mini .mark{width:32px;height:32px}
+.aluno-topo .sair{justify-self:end}
+.aluno-topo .sair svg{width:22px;height:22px}
+.tela-aluno{padding:20px 18px}
+.ola-bloco h1{font-size:28px;font-weight:800}
+
+/* card de perfil */
+.perfil-card{
+  display:flex;align-items:center;gap:16px;background:var(--g1);border-radius:var(--r-lg);
+  padding:18px 20px;box-shadow:var(--sombra);margin-bottom:18px;
+}
+.av.grande{width:60px;height:60px;font-size:20px;box-shadow:0 0 0 3px var(--g1),0 0 0 5px var(--azul-soft)}
+.pc-txt{min-width:0}
+.pc-txt h1{font-size:24px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-txt p{font-size:14px;color:var(--text-faint);margin-top:3px}
+.pc-txt p::first-letter{text-transform:uppercase}
+
+/* carrossel de treinos */
+.carrossel{
+  scroll-padding:0 18px;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
+  margin:0 -18px;padding:2px 18px 14px;scrollbar-width:none;
+}
+.carrossel::-webkit-scrollbar{display:none}
+.treino-card{
+  flex:0 0 100%;scroll-snap-align:center;display:grid;grid-template-columns:1fr 36%;
+  background:var(--g1);border:0;border-radius:var(--r-lg);padding:0;margin:0;overflow:hidden;
+  box-shadow:var(--sombra);min-height:250px;
+}
+.carrossel .treino-card:not(:only-child){flex-basis:calc(100% - 26px)}
+.hero-txt{padding:22px 18px 20px 22px;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.tag{background:var(--azul);color:#fff;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
+  padding:5px 10px;border-radius:7px;margin-bottom:12px}
+.treino-card h2{font-size:24px;font-weight:800;line-height:1.12;margin-bottom:10px;overflow-wrap:anywhere}
+.treino-card .lista-previa{font-size:14px;color:var(--text-dim);line-height:1.45;margin-bottom:18px}
+.treino-card .lista-previa span{display:block;margin-bottom:3px}
+.treino-card .lista-previa em{font-style:normal;color:var(--text-faint);white-space:nowrap}
+.treino-card .lista-previa .resto{color:var(--azul-dim);font-weight:600}
+.treino-card .btn{margin-top:auto;padding:13px 20px;font-size:16px}
+.semana-faixa{background:none;padding:0;margin:0 0 12px;width:100%}
+.semana-faixa b{font-size:14px;color:var(--azul-dim)}
+.semana-faixa span{display:block;font-size:12px;line-height:1.35;color:var(--text-faint);margin-top:1px}
+.semana-faixa i{display:block;height:5px;border-radius:99px;background:var(--g3);margin-top:6px;position:relative;overflow:hidden}
+.semana-faixa i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--p,0%);background:var(--azul);border-radius:99px}
+.hero-arte{
+  position:relative;background:linear-gradient(160deg,#4aa8f5 0%,var(--azul) 40%,var(--azul-dim) 100%);
+  color:#fff;display:flex;align-items:flex-end;padding:18px 16px;overflow:hidden;
+}
+.arte-marca{position:absolute;width:150%;right:-38%;top:-12%;opacity:.9}
+.hero-arte .resumo{position:relative;display:flex;flex-direction:column;gap:12px;margin:0}
+.hero-arte .resumo div{font-size:12px;font-weight:600;opacity:.9;text-transform:none;letter-spacing:0;color:#fff}
+.hero-arte .resumo b{display:block;font-size:28px;font-weight:800;line-height:1;letter-spacing:-.03em;color:#fff}
+.pontos{display:flex;justify-content:center;gap:6px;margin:0 0 6px}
+.pontos i{width:18px;height:4px;border-radius:99px;background:var(--g4)}
+.pontos i.on{background:var(--azul);width:26px}
+.vazio-hoje{background:var(--g1);border:0;box-shadow:var(--sombra);border-radius:var(--r-lg)}
+
+/* atalhos do aluno: rolagem horizontal, o terceiro espia */
+#atalhos-aluno{display:flex;overflow-x:auto;gap:12px;margin:10px -18px 0;padding:4px 18px 16px;scroll-snap-type:x mandatory;scroll-padding:0 18px;scrollbar-width:none}
+#atalhos-aluno::-webkit-scrollbar{display:none}
+#atalhos-aluno .atalho{flex:0 0 42%;scroll-snap-align:start;min-height:150px}
+
+/* navegação inferior no estilo app */
+.aluno-nav{background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:10px 8px calc(10px + env(safe-area-inset-bottom))}
+.aluno-nav button{font-size:12px;font-weight:700;gap:5px;color:var(--text-faint);background:none !important}
+.aluno-nav button svg{width:26px;height:26px}
+.aluno-nav button.on{color:var(--azul)}
+
+/* telas internas do aluno */
+.exec-topo{background:rgba(255,255,255,.97);top:64px;margin:-20px -18px 16px;border-bottom:1px solid var(--line)}
+.ex-card{border:0;border-radius:var(--r)}
+.ex-card.pronto{box-shadow:var(--sombra),inset 0 0 0 2px rgba(95,184,122,.55);background:var(--g1)}
+.ex-cab{background:var(--g1);padding:16px}
+.ex-card.aberto .ex-cab{border-bottom:1px solid var(--line-soft)}
+.ex-cab .ordem{width:32px;height:32px;border-radius:10px}
+.serie-linha input,.serie-linha .ok{border-radius:12px}
+.hist-item{border-radius:var(--r);padding:16px 18px}
+.ck-bloco{border-radius:var(--r);padding:18px}
+.ck-bloco h3{font-size:16px;font-weight:700}
+.escala5 button,.tqr-grade button,.dor-grade button{border-radius:12px;background:var(--g2);border-color:transparent}
+.passo button{background:var(--g2);border-color:transparent}
+.pse-grade button{border-radius:14px}
+.descanso{background:var(--azul-dim)}
+
+@media(max-width:1100px){.atalhos{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:820px){
+  .topbar{padding:14px 18px}
+  .atalhos{display:flex;overflow-x:auto;scrollbar-width:none;margin:14px -18px 0;padding:2px 18px 10px}
+  .atalhos .atalho{flex:0 0 42%;min-height:124px}
+}
+@media(max-width:380px){
+  .treino-card{grid-template-columns:1fr 30%}
+  .treino-card h2{font-size:21px}
+  .hero-arte .resumo b{font-size:23px}
+}
+
+/* tile de check-in herda do atalho, não do antigo banner */
+.atalho.ck-banner{display:flex;align-items:stretch;justify-content:space-between;background:var(--g1);margin:0;padding:20px 18px 18px;border-radius:var(--r)}
+.atalho.ck-banner b{color:var(--text);font-size:17px}
+.atalho.ck-banner.feito{background:var(--g1)}
+.atalho.ck-banner.feito b{color:var(--text)}
+.atalho.ck-banner.feito svg{color:#3f9d5c}
+.atalho > svg{flex-shrink:0}
+.atalho .rodape{display:block}
+.treino-card h2{font-size:23px}
+.atalho,.atalho.ck-banner{justify-content:flex-start}
+.atalho b{margin-top:auto}
+.atalho small{margin-top:-10px}
+
+/* painel no celular: barra inferior como no app do aluno */
+@media(max-width:820px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .main{padding-bottom:84px}
+  .side{
+    position:fixed;top:auto;bottom:0;left:0;right:0;z-index:60;min-width:0;
+    flex-direction:row;justify-content:space-around;align-items:stretch;gap:0;
+    padding:8px 4px calc(8px + env(safe-area-inset-bottom));overflow:visible;
+    background:rgba(255,255,255,.97);backdrop-filter:blur(12px);
+    border:0;box-shadow:0 -1px 0 var(--line);
+  }
+  .side .logo{display:none}
+  .navitem{
+    flex:1;flex-direction:column;gap:4px;padding:6px 2px;font-size:11px;font-weight:700;
+    background:none !important;color:var(--text-faint);text-align:center;position:relative;white-space:nowrap;
+  }
+  .navitem svg{width:24px;height:24px}
+  .navitem.on{color:var(--azul)}
+  .navitem .badge{position:absolute;top:0;left:calc(50% + 6px);margin:0}
+  .side .foot{flex:0 0 auto;margin:0;padding:0 4px;border:0;align-items:center}
+  .side .foot .av{display:none}
+  .topbar{border-bottom:2px solid var(--azul)}
+  .topbar h1{font-size:20px}
+  .topbar .btn{padding:10px 14px;font-size:14px}
+}
+@media(max-width:820px){.card.pad0{overflow-x:auto}.card.pad0 table{min-width:520px}}
