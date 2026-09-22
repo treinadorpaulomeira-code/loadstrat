@@ -796,3 +796,126 @@ tbody tr:hover td{background:rgba(47,151,239,.035)}
 .timer-mini span{font-size:12px;opacity:.75;text-transform:uppercase;letter-spacing:.8px}
 .timer-mini button{background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:99px;padding:6px 13px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
 @media (prefers-reduced-motion:reduce){.timer-card{animation:none}.timer-anel .arco{transition:none}}
+
+/* ==========================================================
+   ETAPA 5 — periodização, 1RM, treino extra, hidratação, calendário
+   ========================================================== */
+.rot-c{display:none}
+@media(max-width:820px){.rot-l{display:none}.rot-c{display:inline}}
+.pill.roxo{background:rgba(169,143,214,.18);color:#6d4fa8}
+
+.per-grid{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start}
+.per-form{position:sticky;top:96px}
+.per-form .chips{margin:0}
+.per-nota{margin-top:10px}
+.per-ativo{background:var(--azul-soft);color:var(--azul-dim);border-radius:12px;padding:10px 12px;font-size:13px;margin:-4px 0 14px}
+.per-ativo .link-sutil{display:inline;margin:0 0 0 6px}
+#per-resultado > .card{margin-bottom:16px}
+#per-resultado .empty{background:var(--g1)}
+.h2c{font-size:16px;font-weight:800;margin-bottom:12px}
+.macro{display:flex;gap:2px;border-radius:12px;overflow:hidden;margin-top:8px}
+.macro .ph{min-width:0;padding:10px 8px;display:flex;flex-direction:column;justify-content:center;gap:1px}
+.macro .ph b{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.macro .ph span{font-size:11px;opacity:.8}
+.caps{display:flex;flex-direction:column;gap:9px}
+.cap{display:grid;grid-template-columns:130px 1fr 18px;align-items:center;gap:10px;font-size:13px}
+.cap .trilho{height:8px;background:var(--g3);border-radius:99px;overflow:hidden}
+.cap .trilho i{display:block;height:100%;background:var(--azul);border-radius:99px}
+.cap b{text-align:right;font-variant-numeric:tabular-nums}
+.micro{display:flex;flex-direction:column;gap:8px}
+.drow{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+.drow:last-child{border:0}
+.drow .dd{font-size:12px;font-weight:700;color:var(--text-faint)}
+.drow b{display:block;font-size:14px}
+.drow div span{font-size:12px;color:var(--text-faint)}
+.mesos{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.meso{position:relative;padding:18px 18px 16px;display:flex;flex-direction:column;gap:6px}
+.meso-n{position:absolute;left:0;top:18px;width:4px;height:28px;border-radius:0 4px 4px 0}
+.meso b{font-size:16px}
+.meso-l{font-size:13px;color:var(--text-dim)}
+.meso-l span{display:block;font-size:11px;font-weight:700;color:var(--text-faint);text-transform:uppercase;letter-spacing:.5px}
+.per-acoes{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:20px 0 8px}
+.per-refs{margin-top:10px;line-height:1.5}
+
+.plano-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:6px}
+.plano-topo b{display:block;font-size:18px;font-weight:800;margin:2px 0}
+.aderencia{text-align:right}
+.aderencia b{display:block;font-size:26px;font-weight:800;color:var(--azul-dim)}
+.legenda{display:flex;gap:16px;font-size:12px;color:var(--text-dim);margin:14px 0 2px}
+.legenda span{display:flex;align-items:center;gap:6px}
+.legenda i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.lg-plan{background:#c9d2df}.lg-real{background:var(--azul)}
+.pf-duo{align-items:start}
+.pf-duo .sechd{margin-top:28px}
+.agua-sem{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:10px}
+.agua-d{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:var(--text-faint);font-weight:700}
+.agua-col{width:100%;max-width:28px;height:90px;background:var(--g2);border-radius:8px;display:flex;align-items:flex-end;overflow:hidden}
+.agua-col i{display:block;width:100%;background:var(--azul);border-radius:8px 8px 0 0}
+
+/* aluno: treino extra */
+.campo-linha{width:100%;margin-top:12px;background:var(--g2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;color:var(--text)}
+.campo-linha:focus{outline:none;border-color:var(--azul);background:var(--g1)}
+.ck-bloco .fmode{margin:0}
+.ck-bloco .pse-grade{margin-top:4px}
+.ex-porque{margin-top:12px;line-height:1.5}
+.hist-item .linha1 .rm-extra{background:none;border:0;color:var(--text-faint);font-size:20px;cursor:pointer;padding:0 4px;line-height:1}
+.hist-item .linha1 .rm-extra:hover{color:var(--vermelho)}
+#extra-lista .vazio-hoje{padding:28px 20px}
+
+/* aluno: hidratação */
+.agua-card{background:var(--g1);border-radius:var(--r-lg);box-shadow:var(--sombra);padding:22px 18px 16px;text-align:center}
+.agua-anel{position:relative;width:190px;height:190px;margin:0 auto}
+.agua-anel svg{width:100%;height:100%;transform:rotate(-90deg)}
+.agua-anel circle{fill:none;stroke-width:14}
+.agua-anel .fundo{stroke:var(--g3)}
+.agua-anel .arco{stroke:var(--azul);stroke-linecap:round;transition:stroke-dashoffset .35s ease}
+.agua-meio{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.agua-meio b{font-size:38px;font-weight:800;letter-spacing:-.03em}
+.agua-meio span{font-size:14px;color:var(--text-faint)}
+.agua-status{font-weight:700;color:var(--azul-dim);margin:10px 0 14px}
+.agua-botoes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.agua-botoes button{border:0;background:var(--azul-soft);color:var(--azul-dim);border-radius:14px;padding:12px 4px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center}
+.agua-botoes button b{font-size:18px}
+.agua-botoes button span{font-size:11px;font-weight:600}
+.agua-botoes button:active{transform:scale(.96)}
+.agua-rodape{display:flex;justify-content:space-between;margin-top:8px}
+.agua-rodape .link-sutil{margin:8px 0 0}
+.ck-bloco.dica b{display:block;font-size:14px;margin-bottom:3px}
+.ck-bloco.dica p{font-size:14px;color:var(--text-dim);line-height:1.45}
+
+/* aluno: calendário — rótulos em rampa de azul (leve → alta) */
+.plano-aluno{background:var(--g1);border-radius:var(--r-lg);box-shadow:var(--sombra);padding:20px;margin-bottom:14px;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.plano-aluno b{font-size:22px;font-weight:800;line-height:1.15;margin-top:6px}
+.plano-aluno > span:not(.tag){font-size:14px;color:var(--text-dim)}
+.plano-aluno .tag{margin-bottom:0}
+.sem-trilho{display:flex;gap:3px;width:100%;margin:12px 0 4px}
+.sem-trilho i{flex:1;height:22px;border-radius:5px}
+.sem-trilho i.passou{opacity:.35}
+.sem-trilho i.atual{outline:2px solid var(--text);outline-offset:2px}
+.r-leve{--c:#bfe0fb}.r-moderada{--c:#5aaaf1}.r-alta{--c:#1455b0}
+.sem-trilho i,.cal-leg i{background:var(--c)}
+.prox{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;margin-top:8px}
+.prox div{background:var(--g2);border-radius:12px;padding:10px}
+.prox span{display:block;font-size:11px;color:var(--text-faint);font-weight:700}
+.prox b{font-size:15px;margin:0}
+.prox em{display:block;font-style:normal;font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-topo{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-topo b{font-size:16px}
+.cal-topo button{width:38px;height:38px;border-radius:12px;border:0;background:var(--g2);font-size:22px;cursor:pointer;color:var(--text-dim)}
+.cal-grade{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal-grade .dh{font-size:11px;font-weight:700;color:var(--text-faint);padding:4px 0}
+.cal-grade .dia{position:relative;aspect-ratio:1;border:0;border-radius:10px;background:var(--g2);font-family:inherit;font-size:14px;font-weight:600;color:var(--text-dim);cursor:pointer}
+.cal-grade .dia:disabled{cursor:default;background:transparent}
+.cal-grade .dia.hoje{outline:2px solid var(--azul);outline-offset:-2px}
+.cal-grade .dia[class*='r-']{background:var(--c);color:var(--text)}
+.cal-grade .dia.r-alta,.cal-grade .dia.r-moderada{color:#fff}
+.cal-grade .dia.sel{box-shadow:0 0 0 2px var(--text)}
+.cal-grade .dia i{display:none}
+.cal-leg{display:flex;gap:14px;justify-content:center;font-size:12px;color:var(--text-dim);margin-top:12px}
+.cal-leg span{display:flex;align-items:center;gap:6px}
+.cal-leg i{width:12px;height:12px;border-radius:4px;display:inline-block}
+.cal-det{margin-top:12px;background:var(--g2);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--text-dim)}
+.cal-det b{display:block;color:var(--text);margin-bottom:4px;text-transform:capitalize}
+
+@media(max-width:1100px){.per-grid{grid-template-columns:1fr}.per-form{position:static}}
+@media(max-width:520px){.cap{grid-template-columns:110px 1fr 16px}.prox{grid-template-columns:1fr 1fr 1fr}.plano-topo{flex-direction:column}.aderencia{text-align:left}}
