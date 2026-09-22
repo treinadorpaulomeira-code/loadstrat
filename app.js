@@ -1351,8 +1351,13 @@ function desenharExecucao(abrirIndice) {
     const linhas = it.series.map((s, j) =>
       "<div class='serie-linha " + (s.concluida ? "feita" : "") + "' " + grade + ">" +
       "<div class='n'>" + (j + 1) + "</div>" +
-      campos.map((k) => "<input inputmode='" + CAMPOS[k].modo + "' value='" + escapar(s[k]) + "' placeholder='" +
-        escapar(s["alvo_" + k] || "—") + "' data-serie='" + i + ":" + j + ":" + k + "'>").join("") +
+      campos.map((k) => {
+        const inp = "<input inputmode='" + CAMPOS[k].modo + "' value='" + escapar(s[k]) + "' placeholder='" +
+          escapar(s["alvo_" + k] || "—") + "' data-serie='" + i + ":" + j + ":" + k + "'>";
+        return k !== "tempo" ? inp : "<div class='cel-tempo'>" + inp +
+          "<button class='play' data-cronometrar='" + i + ":" + j + "' title='Cronometrar esta série' aria-label='Cronometrar'>" +
+          "<svg viewBox='0 0 24 24'><path d='M8 5v14l11-7z' fill='currentColor'/></svg></button></div>";
+      }).join("") +
       "<button class='ok' data-ok='" + i + ":" + j + "' title='Concluir série'>" + (s.concluida ? "✓" : "○") + "</button>" +
       "</div>").join("");
 
@@ -1364,7 +1369,8 @@ function desenharExecucao(abrirIndice) {
       (it.metodo && it.metodo !== "normal" ? " · " + escapar(it.metodo) : "") + "</span></div>" +
       "<div class='seta'>›</div></div>" +
       "<div class='ex-corpo'>" + midia + obs + ultima + cab + linhas +
-      "<div class='ultima-vez' style='margin-top:10px'>Descanso sugerido: <b>" + it.descanso_s + " seg</b></div>" +
+      "<div class='rodape-ex'><span class='ultima-vez'>Descanso: <b>" + fmtTempo(it.descanso_s) + "</b></span>" +
+      "<button class='btn ghost sm' data-descansar='" + i + "'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='13' r='8'/><path d='M12 9v4l2 2M10 2h4'/></svg>Descansar agora</button></div>" +
       "</div></div>";
   }).join("");
 
@@ -1390,6 +1396,10 @@ function desenharExecucao(abrirIndice) {
 
   $$("[data-ok]").forEach((b) =>
     b.addEventListener("click", () => alternarSerie(...b.dataset.ok.split(":").map(Number))));
+  $$("[data-cronometrar]").forEach((b) =>
+    b.addEventListener("click", () => cronometrarSerie(...b.dataset.cronometrar.split(":").map(Number))));
+  $$("[data-descansar]").forEach((b) =>
+    b.addEventListener("click", () => comecarDescanso(al.itens[+b.dataset.descansar].descanso_s, proximoTexto(+b.dataset.descansar))));
 }
 
 /* ---------- gravar série a série ---------- */
@@ -1414,7 +1424,7 @@ async function alternarSerie(i, j) {
 
   if (ok && virandoFeita) {
     const todas = al.itens[i].series.every((x) => x.concluida);
-    if (!todas) comecarDescanso(al.itens[i].descanso_s);
+    if (!todas) comecarDescanso(al.itens[i].descanso_s, proximoTexto(i));
   }
 }
 
@@ -1446,7 +1456,7 @@ async function gravarSerie(i, j) {
   return r.ok;
 }
 
-/* ---------- relógio e descanso ---------- */
+/* ---------- relógio da sessão ---------- */
 function iniciarRelogio() {
   clearInterval(al.relogio);
   const passo = () => {
@@ -1459,32 +1469,213 @@ function iniciarRelogio() {
   al.relogio = setInterval(passo, 1000);
 }
 
-function comecarDescanso(segundos) {
-  clearInterval(al.descanso);
-  let resta = parseInt(segundos) || 90;
-  const caixa = $("#descanso");
-  const mostra = () => {
-    const m = String(Math.floor(resta / 60)).padStart(2, "0");
-    const s = String(resta % 60).padStart(2, "0");
-    $("#descanso-tempo").textContent = m + ":" + s;
-  };
-  caixa.hidden = false;
-  mostra();
-  al.descanso = setInterval(() => {
-    resta--;
-    mostra();
-    if (resta <= 0) { clearInterval(al.descanso); caixa.hidden = true; }
-  }, 1000);
+/* =========================================================
+   CRONÔMETRO — descanso e séries por tempo
+   Conta pelo relógio do aparelho (Date.now), não por "ticks":
+   se a tela apagar ou o app for para o fundo, ao voltar o tempo está certo.
+   ========================================================= */
+const tm = { aberto: false, modo: null, fase: null, fim: 0, inicio: 0, pausa: 0, alvo: 0, seg: 0, tick: null, ctx: null, lock: null, bipou: {}, aoTerminar: null, mini: false };
+const ANEL = 2 * Math.PI * 88;
+
+function audioTimer() {
+  try {
+    tm.ctx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (tm.ctx.state === "suspended") tm.ctx.resume();
+  } catch { tm.ctx = null; }
+  return tm.ctx;
 }
-$("#descanso-pular").addEventListener("click", () => {
-  clearInterval(al.descanso);
-  $("#descanso").hidden = true;
+function bip(freq = 880, dur = 0.12, vezes = 1) {
+  const c = audioTimer();
+  if (!c) return;
+  for (let k = 0; k < vezes; k++) {
+    const t0 = c.currentTime + k * 0.22;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+}
+const vibrar = (p) => { try { navigator.vibrate?.(p); } catch { /* iPhone não vibra pelo navegador */ } };
+async function telaLigada(sim) {
+  try {
+    if (sim && "wakeLock" in navigator && !tm.lock) tm.lock = await navigator.wakeLock.request("screen");
+    if (!sim && tm.lock) { await tm.lock.release(); tm.lock = null; }
+  } catch { tm.lock = null; }
+}
+const mmss = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+};
+
+/*
+  abrirTimer({ modo: "descanso", seg, sub })
+  abrirTimer({ modo: "serie", seg (0 = cronômetro progressivo), titulo, sub, aoTerminar(segundosFeitos) })
+*/
+function abrirTimer(op) {
+  clearInterval(tm.tick);
+  audioTimer(); // o toque do aluno libera o som no celular
+  Object.assign(tm, { aberto: true, modo: op.modo, aoTerminar: op.aoTerminar ?? null, alvo: (parseInt(op.seg) || 0) * 1000,
+    pausa: 0, bipou: {}, mini: false });
+  $("#timer-rot").textContent = op.modo === "descanso" ? "Descanso" : op.titulo ?? "Série";
+  $("#timer-sub").textContent = op.sub ?? "";
+  $("#timer").dataset.modo = op.modo;
+  if (op.modo === "descanso") iniciarFase("contagem", tm.alvo || 90000);
+  else iniciarFase("preparo", 3000);
+  $("#timer").hidden = false;
+  $("#timer").classList.remove("mini");
+  telaLigada(true);
+  tm.tick = setInterval(passoTimer, 200);
+  passoTimer();
+}
+function iniciarFase(fase, dur) {
+  tm.fase = fase;
+  tm.inicio = Date.now();
+  tm.seg = dur;
+  tm.fim = dur ? tm.inicio + dur : 0;
+  tm.bipou = {};
+  $("#timer").dataset.fase = fase;
+  $("#timer-pausar").textContent = "Pausar";
+  const rotFim = { contagem: "Pular", preparo: "Cancelar", trabalho: "Terminar série", livre: "Parar e registrar" };
+  $("#timer-fim").textContent = rotFim[fase];
+  $("#timer-fase").textContent = { contagem: "", preparo: "Prepare-se", trabalho: tm.alvo ? "Segure!" : "Valendo", livre: "Valendo" }[fase];
+}
+function restanteMs() {
+  const agora = tm.pausa || Date.now();
+  return tm.fim ? tm.fim - agora : agora - tm.inicio;   // na fase livre, devolve o tempo decorrido
+}
+function passoTimer() {
+  if (!tm.aberto) return;
+  const r = restanteMs();
+  const contaPraBaixo = tm.fase !== "livre";
+  $("#timer-num").textContent = contaPraBaixo ? (tm.fase === "preparo" ? String(Math.max(1, Math.ceil(r / 1000))) : mmss(r)) : mmss(r);
+  $("#timer-mini-num").textContent = $("#timer-num").textContent;
+  const frac = contaPraBaixo ? Math.max(0, Math.min(1, r / tm.seg)) : (r % 60000) / 60000;
+  $("#timer-arco").style.strokeDashoffset = String(ANEL * (1 - frac));
+  if (tm.pausa) return;
+
+  // bipes curtos nos 3 últimos segundos, longo no zero
+  if (contaPraBaixo) {
+    const s = Math.ceil(r / 1000);
+    if (s <= 3 && s >= 1 && !tm.bipou[s]) { tm.bipou[s] = 1; bip(660, 0.09); vibrar(60); }
+    if (r <= 0) terminarFase();
+  }
+}
+function terminarFase() {
+  if (tm.fase === "preparo") {
+    bip(990, 0.25); vibrar(200);
+    iniciarFase(tm.alvo ? "trabalho" : "livre", tm.alvo);
+    return passoTimer();
+  }
+  if (tm.fase === "trabalho") {
+    bip(990, 0.3, 2); vibrar([200, 100, 200]);
+    return concluirSerieTimer(Math.round(tm.alvo / 1000));
+  }
+  if (tm.fase === "contagem") {
+    bip(990, 0.3, 2); vibrar([200, 100, 200]);
+    $("#timer-num").textContent = "Bora!";
+    $("#timer-mini-num").textContent = "Bora!";
+    clearInterval(tm.tick);
+    setTimeout(() => { if (tm.fase === "contagem" && tm.aberto) fecharTimer(); }, 1500);
+  }
+}
+async function concluirSerieTimer(seg) {
+  const cb = tm.aoTerminar;
+  fecharTimer();
+  if (cb && seg > 0) await cb(seg);
+}
+function fecharTimer() {
+  clearInterval(tm.tick);
+  tm.aberto = false;
+  $("#timer").hidden = true;
+  telaLigada(false);
+}
+
+$("#timer-pausar").addEventListener("click", () => {
+  if (!tm.aberto) return;
+  if (tm.pausa) {                               // continuar: empurra o fim pelo tempo parado
+    const parado = Date.now() - tm.pausa;
+    tm.inicio += parado; if (tm.fim) tm.fim += parado;
+    tm.pausa = 0;
+    $("#timer-pausar").textContent = "Pausar";
+    $("#timer").classList.remove("pausado");
+  } else {
+    tm.pausa = Date.now();
+    $("#timer-pausar").textContent = "Continuar";
+    $("#timer").classList.add("pausado");
+  }
+  passoTimer();
 });
+$("#timer-fim").addEventListener("click", () => {
+  if (tm.fase === "contagem" || tm.fase === "preparo") return fecharTimer();
+  // terminar antes / parar o progressivo: registra o tempo realmente feito
+  const feito = tm.fase === "livre" ? restanteMs() : (tm.alvo - Math.max(0, restanteMs()));
+  concluirSerieTimer(Math.round(feito / 1000));
+});
+$("#timer-fechar").addEventListener("click", fecharTimer);
+$$("[data-tajuste]").forEach((b) => b.addEventListener("click", () => {
+  const d = parseInt(b.dataset.tajuste) * 1000;
+  tm.fim = Math.max((tm.pausa || Date.now()) + 1000, tm.fim + d);
+  tm.seg = Math.max(tm.seg + d, tm.fim - (tm.pausa || Date.now()));
+  tm.bipou = {};
+  passoTimer();
+}));
+$("#timer-minimizar").addEventListener("click", () => { $("#timer").classList.add("mini"); });
+$("#timer-mini").addEventListener("click", (e) => {
+  if (e.target.closest("#timer-mini-pular")) return fecharTimer();
+  $("#timer").classList.remove("mini");
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && tm.aberto) {
+    if (tm.lock === null) telaLigada(true);   // o sistema solta a trava quando a aba sai de foco
+    passoTimer();
+  }
+});
+
+function comecarDescanso(segundos, sub) {
+  abrirTimer({ modo: "descanso", seg: parseInt(segundos) || 90, sub: sub ?? "" });
+}
+/* texto "Próximo: Supino — série 2 de 3" */
+function proximoTexto(i) {
+  const it = al.itens[i];
+  const j = it.series.findIndex((s) => !s.concluida);
+  if (j >= 0) return "Próximo: " + it.nome + " — série " + (j + 1) + " de " + it.series.length;
+  const k = al.itens.findIndex((x, n) => n > i && x.series.some((s) => !s.concluida));
+  return k >= 0 ? "Próximo: " + al.itens[k].nome : "";
+}
+
+/* cronometrar uma série por tempo */
+function cronometrarSerie(i, j) {
+  const it = al.itens[i], s = it.series[j];
+  const alvo = segundos(s.alvo_tempo) ?? segundos(s.tempo) ?? 0;
+  const carga = String(s.carga || s.alvo_carga || "").trim();
+  abrirTimer({
+    modo: "serie", seg: alvo, titulo: it.nome,
+    sub: "Série " + (j + 1) + " de " + it.series.length + (carga && REGISTROS[it.registro].campos.includes("carga") ? " · " + carga + " kg" : "") +
+      (alvo ? "" : " · cronômetro livre"),
+    aoTerminar: async (feitos) => {
+      s.tempo = fmtTempo(feitos);
+      if (!String(s.carga ?? "").trim()) s.carga = s.alvo_carga;
+      if (!String(s.dist ?? "").trim()) s.dist = s.alvo_dist;
+      const antes = s.concluida;
+      s.concluida = true;
+      const ok = await gravarSerie(i, j);
+      if (!ok) s.concluida = antes;
+      desenharExecucao(i);
+      if (ok) {
+        const resta = al.itens.some((x) => x.series.some((y) => !y.concluida));
+        if (resta) comecarDescanso(it.descanso_s, "✓ " + s.tempo + " registrados · " + proximoTexto(i));
+        else bom("Série registrada: " + s.tempo);
+      }
+    },
+  });
+}
 
 $("#btn-voltar").addEventListener("click", () => {
   clearInterval(al.relogio);
-  clearInterval(al.descanso);
-  $("#descanso").hidden = true;
+  fecharTimer();
   telaAluno("hoje");
 });
 
@@ -1547,8 +1738,7 @@ async function finalizarTreino(pse, minutos) {
   if (!conf.ok || !conf.data.finalizada) { btn.disabled = false; btn.textContent = "Finalizar treino"; return; }
 
   clearInterval(al.relogio);
-  clearInterval(al.descanso);
-  $("#descanso").hidden = true;
+  fecharTimer();
   fecharModal();
   al.sessao = null;
   telaAluno("hoje");
