@@ -304,6 +304,7 @@ function desenharSeletorAluno() {
   if (antes && estado.alunos.some((a) => a.id === antes)) sel.value = antes;
 }
 
+$("#atalho-novo-aluno").addEventListener("click", () => { irPara("alunos"); $("#btn-novo-aluno").click(); });
 $("#btn-novo-aluno").addEventListener("click", () => {
   abrirModal(
     "<h3>Novo aluno</h3><p class='desc'>Eu crio a conta e gero uma senha temporária para você passar ao aluno.</p>" +
@@ -908,6 +909,7 @@ const al = {
 async function iniciarAluno() {
   const primeiro = estado.perfil.nome.split(" ")[0];
   $("#aluno-ola").textContent = "Olá, " + primeiro;
+  $("#aluno-av").textContent = iniciais(estado.perfil.nome);
   $("#aluno-data").textContent = new Date().toLocaleDateString("pt-BR", {
     weekday: "long", day: "numeric", month: "long",
   });
@@ -961,40 +963,76 @@ async function carregarTreinosAluno() {
 }
 
 function desenharTreinosHoje() {
+  desenharAtalhosAluno();
   const alvo = $("#lista-treinos");
   if (!al.treinos.length) {
-    alvo.innerHTML = bannerCheckin() +
-      "<div class='vazio-hoje'><b>Nenhum treino por aqui ainda</b>" +
+    alvo.innerHTML = "<div class='vazio-hoje'><b>Nenhum treino por aqui ainda</b>" +
       "Assim que seu treinador publicar, ele aparece nesta tela.</div>";
-    ligarBannerCheckin();
     return;
   }
-  const hoje = new Date().toISOString().slice(0, 10);
-  alvo.innerHTML = bannerCheckin() + al.treinos.map((t) => {
+  const hoje = hojeISO();
+  const cards = al.treinos.map((t) => {
     const w = t.semanaAtual || 1;
     const series = t.estrutura.reduce((s, e) => s + seriesDaSemana(e, w).length, 0);
     const min = Math.round(t.estrutura.reduce(
       (s, e) => s + seriesDaSemana(e, w).length * ((parseInt(e.descanso_s) || 0) + 45), 0) / 60);
-    const previa = t.estrutura.slice(0, 4)
-      .map((e) => "<span>• " + escapar(e.nome) + " — " + esquemaTexto(e, w) + "</span>").join("");
+    const previa = t.estrutura.slice(0, 3)
+      .map((e) => "<span>" + escapar(e.nome) + " <em>" + esquemaTexto(e, w) + "</em></span>").join("");
+    const resto = t.estrutura.length > 3
+      ? "<span class='resto'>+ " + (t.estrutura.length - 3) + " exercício" + (t.estrutura.length - 3 > 1 ? "s" : "") + "</span>" : "";
     const faixaSemana = (t.semanas || 1) > 1
       ? "<div class='semana-faixa'><b>Semana " + w + " de " + t.semanas + "</b><span>" +
         (t.cicloFeito ? "ciclo concluído — fale com seu treinador"
           : t.feitasNaSemana + " de " + (t.sessoes_por_semana || 1) + " treinos feitos nesta semana") +
-        "</span></div>" : "";
-    const resto = t.estrutura.length > 4
-      ? "<span>e mais " + (t.estrutura.length - 4) + "</span>" : "";
-    return "<div class='treino-card'><div class='topo'><h2>" + escapar(t.nome) + "</h2>" +
-      (t.data === hoje ? "<span class='pill azul'>hoje</span>"
-        : "<span class='pill'>" + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"}) + "</span>") +
-      "</div>" + faixaSemana + "<div class='resumo'><div>Exercícios<b>" + t.estrutura.length + "</b></div>" +
-      "<div>Séries<b>" + series + "</b></div><div>Tempo<b>" + min + "min</b></div></div>" +
+        "</span><i style='--p:" + (t.cicloFeito ? 100 : Math.round(100 * t.feitasNaSemana / (t.sessoes_por_semana || 1))) + "%'></i></div>" : "";
+    const tag = t.data === hoje ? "Hoje"
+      : "Desde " + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    return "<article class='treino-card'>" +
+      "<div class='hero-txt'><span class='tag'>" + tag + "</span>" +
+      "<h2>" + escapar(t.nome) + "</h2>" + faixaSemana +
       "<div class='lista-previa'>" + previa + resto + "</div>" +
-      "<button class='btn bloco' data-comecar='" + t.id + "'>Começar treino</button></div>";
-  }).join("");
-
+      "<button class='btn' data-comecar='" + t.id + "'>Começar treino <span class='chev'>›</span></button></div>" +
+      "<div class='hero-arte' aria-hidden='true'>" + MARCA_ARTE +
+      "<div class='resumo'><div><b>" + min + "</b>min</div><div><b>" + series + "</b>séries</div>" +
+      "<div><b>" + t.estrutura.length + "</b>exercícios</div></div></div></article>";
+  });
+  alvo.innerHTML = "<div class='carrossel' id='carrossel'>" + cards.join("") + "</div>" +
+    (cards.length > 1 ? "<div class='pontos' id='pontos'>" + cards.map((_, k) => "<i" + (k ? "" : " class='on'") + "></i>").join("") + "</div>" : "");
   $$("[data-comecar]").forEach((b) =>
     b.addEventListener("click", () => comecarTreino(b.dataset.comecar)));
+  const car = $("#carrossel"), pts = $$("#pontos i");
+  if (pts.length) car.addEventListener("scroll", () => {
+    const k = Math.round(car.scrollLeft / (car.firstElementChild.offsetWidth + 12));
+    pts.forEach((p, n) => p.classList.toggle("on", n === k));
+  }, { passive: true });
+}
+
+const MARCA_ARTE = "<svg class='arte-marca' viewBox='0 0 24 24' fill='none'>" +
+  "<path d='M12 2L21 6.5L12 11L3 6.5L12 2Z' fill='rgba(255,255,255,.22)'/>" +
+  "<path d='M3 11L12 15.5L21 11' stroke='rgba(255,255,255,.3)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/>" +
+  "<path d='M3 15.5L12 20L21 15.5' stroke='rgba(255,255,255,.22)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+
+const ICONE = {
+  executar: "<path d='M10 2h4M12 14l3-3'/><circle cx='12' cy='14' r='8'/>",
+  checkin: "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
+  historico: "<path d='M4 19V5M4 19h16M8 17V9M12 17V6M16 17v-5'/>",
+};
+const svgIcone = (k) => "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" + ICONE[k] + "</svg>";
+
+function desenharAtalhosAluno() {
+  const alvo = $("#atalhos-aluno");
+  if (!alvo) return;
+  const tem = al.treinos.length > 0;
+  alvo.innerHTML =
+    "<button class='atalho' data-atalho='executar'" + (tem ? "" : " disabled") + ">" + svgIcone("executar") +
+      "<b>Executar treino</b></button>" +
+    bannerCheckin() +
+    "<button class='atalho' data-atalho='historico'>" + svgIcone("historico") + "<b>Meu histórico</b></button>";
+  $$("[data-atalho='executar']").forEach((b) => b.addEventListener("click", () => {
+    if (!al.treinos.length) return;
+    comecarTreino((al.treinos.find((t) => t.data === hojeISO()) ?? al.treinos[0]).id);
+  }));
+  $$("[data-atalho='historico']").forEach((b) => b.addEventListener("click", () => telaAluno("historico")));
   ligarBannerCheckin();
 }
 
@@ -1810,9 +1848,10 @@ async function salvarCheckin() {
 
 function bannerCheckin() {
   return al.checkinHoje
-    ? "<div class='ck-banner feito'><b>✓ Check-in de hoje feito</b><button class='link-sutil' data-ir-ck>ajustar</button></div>"
-    : "<div class='ck-banner'><div><b>Como você acordou hoje?</b><span>Faça o check-in antes do treino — leva um minuto.</span></div>" +
-      "<button class='btn sm' data-ir-ck>Fazer check-in</button></div>";
+    ? "<button class='atalho ck-banner feito' data-ir-ck>" + svgIcone("checkin") +
+      "<span class='selo verde'>Feito</span><b>Check-in</b><small>✓ Check-in de hoje feito · ajustar</small></button>"
+    : "<button class='atalho ck-banner' data-ir-ck>" + svgIcone("checkin") +
+      "<span class='selo'>Hoje</span><b>Check-in</b><small>Como você acordou hoje?</small></button>";
 }
 
 function ligarBannerCheckin() {
