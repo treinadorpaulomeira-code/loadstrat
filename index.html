@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=7">
+<link rel="stylesheet" href="./estilo.css?v=8">
 </head>
 <body>
 
@@ -123,9 +123,10 @@
           <button class="atalho" data-ir="alunos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
             <b>Carga dos alunos</b></button>
-          <button class="atalho" data-ir="biblioteca">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M22 7l-5 4 5 4z"/></svg>
-            <b>Biblioteca de vídeos</b></button>
+          <button class="atalho" id="atalho-novo-ex">
+            <span class="selo">Vídeo</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M22 7l-5 4 5 4zM9.5 9v6M6.5 12h6"/></svg>
+            <b>Novo exercício</b></button>
         </div>
 
         <div class="sechd"><h2>Precisa da sua atenção</h2><span class="mini" id="alertas-sub">—</span></div>
@@ -198,7 +199,10 @@
               <button class="on" data-modo="grupo">Grupo muscular</button>
               <button data-modo="padrao">Padrão</button>
             </div>
-            <input class="lib-search" id="in-busca-lib" placeholder="Buscar exercício…">
+            <div class="lib-busca-linha">
+              <input class="lib-search" id="in-busca-lib" placeholder="Buscar exercício…">
+              <button class="btn sm" id="btn-criar-ex-lib" title="Criar exercício novo">+ Criar</button>
+            </div>
             <div class="chips" id="chips"></div>
             <div class="liblist" id="liblist"></div>
           </div>
@@ -358,6 +362,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=7"></script>
+<script type="module" src="./app.js?v=8"></script>
 </body>
 </html>
