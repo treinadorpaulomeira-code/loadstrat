@@ -1,34 +1,47 @@
 # LOADSTRAT
 
-Sistema de gestão de treino do treinador Paulo Meira (CREF 47780-G/PR).
-Duas interfaces sobre o mesmo Supabase, mesmo login:
+App de gestão de treino do Treinador Paulo Meira: um painel para o treinador e um app
+mobile-first para o aluno, sobre o mesmo Supabase e o mesmo login.
 
-- **Painel do treinador** — alunos, construtor de treino, biblioteca com vídeo
-- **App do aluno** — treino do dia, execução série a série, check-in
+**No ar:** https://treinadorpaulomeira-code.github.io/loadstrat/
 
 ## Como funciona
 
-Front-end estático (HTML + JS puro, sem build) publicado no GitHub Pages,
-falando direto com o Supabase.
+- `index.html`, `estilo.css`, `app.js` — o site inteiro (sem build). O `index.html` aponta
+  para os assets com `?v=N`; **suba o N** a cada publicação para o navegador do aluno não
+  ficar com a versão antiga.
+- Supabase (projeto `bqprycsbkwrtxsqmskpw`): Auth por e-mail/senha, Postgres com RLS ligada
+  em todas as tabelas e Storage (`exercise-videos`) para os vídeos. No banco fica só a URL.
+- `supabase/migrations/` — todo o schema em ordem. As mesmas migrações estão guardadas no
+  próprio Supabase (histórico de migrations).
+- `supabase/functions/criar-aluno` — cria a conta do aluno e o vínculo com o treinador
+  (é o único caminho para criar vínculo; o cliente não insere em `students`).
 
-- **Banco**: PostgreSQL com Row-Level Security em todas as tabelas
-- **Auth**: e-mail/senha
-- **Storage**: bucket `exercise-videos` — o vídeo fica no Storage, o banco guarda só a URL
+## Regras que não podem ser quebradas
 
-A chave `anon` no `app.js` é pública de propósito. Quem protege os dados é a RLS,
-não o segredo da chave.
+- **O aluno nunca vê UA, ACWR, monotonia ou strain.** Ele vê carga externa (kg, reps, tempo,
+  distância) e rótulos (leve/moderada/alta). A função `metricas_carga` recusa quem não for o
+  treinador do aluno; `carga_diaria` devolve vazio; `plano_do_aluno` entrega só fase e rótulos.
+- Carga interna = PSE × minutos. ACWR = carga de 7 dias ÷ média dos 4 blocos anteriores
+  (só depois de 28 dias de registro). Monotonia (Foster) = média diária ÷ desvio-padrão dos
+  7 dias, com dias sem treino contando como zero. Strain = carga semanal × monotonia.
+- `exercises.video_url` aceita só link canônico do YouTube ou arquivo do bucket (check no banco).
+- A forma de registro (carga × reps, carga × tempo, carga × distância, só reps, só tempo)
+  é de cada exercício **dentro da prescrição**, não do exercício da biblioteca.
 
-## Estrutura
+## Contas de teste
 
-    index.html          casca das duas interfaces
-    estilo.css          tema claro off-white #eef1f6 + azul #2f97ef
-    app.js              autenticação, painel do treinador, app do aluno
-    supabase/migrations decisões de esquema e segurança, em ordem
-    supabase/functions  funções de servidor (criar conta de aluno)
+`treinador.teste@loadstrat.app`, `aluno.teste@loadstrat.app`, `carga.sintetica@loadstrat.app`,
+`rival@loadstrat.app` — todas com a senha `LoadStrat#2026`. A conta "Carga Sintética" existe
+para conferir os cálculos de carga contra a planilha/relatório.
 
-## Segurança — o que já foi verificado
+## Testes
 
-O esquema foi testado em Postgres local e no projeto real, com dois treinadores
-e dois alunos, cobrindo: aluno não vê rascunho, treinador não vê aluno alheio,
-aluno não se promove a treinador, ninguém lê nada sem login.
-Ver `supabase/migrations/0004_endurecimento.sql` para os furos encontrados e fechados.
+- `testes/` — teste offline que roda o `index.html` e o `app.js` reais num DOM simulado com um
+  Supabase falso: `node teste.mjs` (140 checagens). Cobre ondulação, check-in, vídeos, registro
+  por prescrição, cronômetro, periodização, 1RM, hidratação, calendário, prontidão e progressão.
+- Os testes de permissão (RLS) são feitos por SQL direto no Supabase, simulando cada papel.
+
+## Fora do escopo (combinado)
+
+Sem wearables, sem pagamentos, sem push e sem venda para outros treinadores.
