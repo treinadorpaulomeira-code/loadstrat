@@ -919,3 +919,29 @@ tbody tr:hover td{background:rgba(47,151,239,.035)}
 
 @media(max-width:1100px){.per-grid{grid-template-columns:1fr}.per-form{position:static}}
 @media(max-width:520px){.cap{grid-template-columns:110px 1fr 16px}.prox{grid-template-columns:1fr 1fr 1fr}.plano-topo{flex-direction:column}.aderencia{text-align:left}}
+
+/* ---------- prontidão (TQR) no painel ---------- */
+.tqr-cel{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tqr-cel b{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;min-width:26px}
+.tqr-cel .delta{font-weight:700}
+.delta.sobe{color:#3f8c57}
+.delta.desce{color:#a33f31}
+.spark{display:flex;align-items:flex-end;gap:3px;height:34px}
+.spark i{width:8px;height:var(--h,0%);min-height:3px;border-radius:3px;background:var(--azul);display:block}
+.spark i.vermelho{background:var(--vermelho)}
+.spark i.ambar{background:var(--ambar)}
+.spark i.verde{background:var(--verde)}
+.spark i.vazio{height:100%;background:none;border:1px dashed var(--g4);opacity:.8}
+@media(max-width:820px){#tb-prontidao ~ *{}.card.pad0 table{min-width:560px}}
+
+/* ---------- minha progressão (aluno) ---------- */
+.prog-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 14px}
+.prog-card{background:var(--g1);border-radius:var(--r);box-shadow:var(--sombra);padding:14px 12px;text-align:center}
+.prog-card b{display:block;font-size:21px;font-weight:800;letter-spacing:-.02em}
+.prog-card span{font-size:11px;color:var(--text-faint);font-weight:600;line-height:1.25;display:block;margin-top:2px}
+.prog-card.sobe b{color:#3f8c57}
+.prog-card.desce b{color:#a33f31}
+.ck-bloco .card-tit{margin-bottom:4px}
+.ck-bloco .card-tit h3{font-size:16px;font-weight:700}
+.prog-vol{margin:10px 2px 0}
+#prog-corpo .campo select{width:100%;background:var(--g2);border:1px solid var(--line);border-radius:14px;padding:13px 15px;font-size:15px;font-family:inherit;color:var(--text)}
