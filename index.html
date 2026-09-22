@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=10">
+<link rel="stylesheet" href="./estilo.css?v=11">
 </head>
 <body>
 
@@ -81,7 +81,11 @@
     </button>
     <button class="navitem" data-nav="prescrever">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7l6-3 6 3v10l-6 3-6-3z"/></svg>
-      Prescrever treino
+      <span class="rot-l">Prescrever treino</span><span class="rot-c">Prescrever</span>
+    </button>
+    <button class="navitem" data-nav="periodizacao">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 17h8"/></svg>
+      <span class="rot-l">Periodização</span><span class="rot-c">Plano</span>
     </button>
     <button class="navitem" data-nav="biblioteca">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
@@ -244,6 +248,61 @@
         <div class="card pad0 rolagem" style="margin-top:14px"><table>
           <thead><tr><th>Dia</th><th>Séries feitas</th><th>Melhor série</th><th>Volume</th></tr></thead>
           <tbody id="pf-ex-tabela"></tbody></table></div>
+
+        <div class="sechd"><h2>1RM estimado</h2><span class="mini" id="rm-sub">média de Epley e Brzycki · séries de até 12 reps</span></div>
+        <div class="card pad0 rolagem"><table>
+          <thead><tr><th>Exercício</th><th>Melhor série</th><th>Epley</th><th>Brzycki</th><th>1RM est.</th><th>Relativo</th><th>Nível</th></tr></thead>
+          <tbody id="pf-rm"></tbody></table></div>
+
+        <div class="sechd"><h2>Periodização</h2><a id="pf-ir-plano">Abrir planejador →</a></div>
+        <div class="card" id="pf-plano"></div>
+
+        <div class="grid g2 pf-duo">
+          <div>
+            <div class="sechd"><h2>Treinos adicionais</h2><span class="mini">últimos 28 dias · somam na carga</span></div>
+            <div class="card pad0 rolagem"><table>
+              <thead><tr><th>Dia</th><th>Atividade</th><th>Duração</th><th>PSE</th><th>UA</th></tr></thead>
+              <tbody id="pf-extras"></tbody></table></div>
+          </div>
+          <div>
+            <div class="sechd"><h2>Hidratação</h2><span class="mini">últimos 7 dias</span></div>
+            <div class="card" id="pf-agua"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="periodizacao">
+      <header class="topbar">
+        <div><h1>Periodização</h1><div class="sub">Macrociclo por esporte: fases, capacidades e carga planejada</div></div>
+      </header>
+      <div class="conteudo">
+        <div class="per-grid">
+          <form class="card per-form" id="per-form" novalidate>
+            <label class="campo"><span>Aluno</span><select id="per-aluno"></select></label>
+            <div class="per-ativo" id="per-ativo" hidden></div>
+            <div class="campo"><span>Esporte</span><div class="chips" id="per-esportes"></div></div>
+            <div class="linha">
+              <label class="campo"><span>Início do plano</span><input type="date" id="per-inicio"></label>
+              <label class="campo"><span>Semanas até a competição</span><input type="number" id="per-semanas" min="4" max="52" value="16" inputmode="numeric"></label>
+            </div>
+            <div class="linha">
+              <label class="campo"><span>Sessões por semana</span><select id="per-sessoes"></select></label>
+              <div class="campo"><span>Modelo</span>
+                <div class="fmode" id="per-modelo"><button type="button" class="on" data-modelo="classico">Clássico</button><button type="button" data-modelo="atr">Blocos ATR</button></div>
+              </div>
+            </div>
+            <label class="campo"><span>Carga semanal de referência (UA)</span><input id="per-base" inputmode="numeric" placeholder="ex.: 1800">
+              <small class="mini" id="per-base-dica">Usada para calcular a carga planejada de cada semana.</small></label>
+            <div id="per-erro" class="erro" hidden></div>
+            <button class="btn bloco" id="per-gerar" type="submit">Gerar periodização</button>
+            <p class="mini per-nota">Motor por regras (Bompa &amp; Buzzichelli, Issurin, Verkhoshansky): você revisa tudo antes de salvar.</p>
+          </form>
+          <div id="per-resultado">
+            <div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+              <p>Escolha o aluno, o esporte e a temporada, e gere o plano.</p></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -322,6 +381,27 @@
       <div id="checkin-form"></div>
     </section>
 
+    <!-- TREINO EXTRA -->
+    <section class="tela-aluno" data-tela="extra">
+      <div class="ola-bloco"><h1>Treino extra</h1><p>Corrida, yoga, pelada… tudo o que não veio no seu plano.</p></div>
+      <div id="extra-form"></div>
+      <div class="sechd"><h2>Esta semana</h2><span class="mini" id="extra-sub"></span></div>
+      <div id="extra-lista"></div>
+    </section>
+
+    <!-- HIDRATAÇÃO -->
+    <section class="tela-aluno" data-tela="agua">
+      <div class="ola-bloco"><h1>Hidratação</h1><p id="agua-sub">Beba ao longo do dia.</p></div>
+      <div id="agua-corpo"><div class="carregando">Carregando…</div></div>
+    </section>
+
+    <!-- CALENDÁRIO -->
+    <section class="tela-aluno" data-tela="calendario">
+      <div class="ola-bloco"><h1>Meu calendário</h1><p>Seu plano e os dias em que você treinou.</p></div>
+      <div id="cal-plano"></div>
+      <div id="cal-mes"><div class="carregando">Carregando…</div></div>
+    </section>
+
     <!-- HISTÓRICO -->
     <section class="tela-aluno" data-tela="historico">
       <div class="ola-bloco"><h1>Histórico</h1><p>Seus treinos concluídos</p></div>
@@ -383,6 +463,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=10"></script>
+<script type="module" src="./app.js?v=11"></script>
 </body>
 </html>
