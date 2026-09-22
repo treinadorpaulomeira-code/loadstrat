@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=9">
+<link rel="stylesheet" href="./estilo.css?v=10">
 </head>
 <body>
 
@@ -345,11 +345,32 @@
     </button>
   </nav>
 
-  <!-- descanso -->
-  <div class="descanso" id="descanso" hidden>
-    <span id="descanso-tempo">01:30</span>
-    <span class="descanso-txt">descanso</span>
-    <button id="descanso-pular">pular</button>
+  <!-- cronômetro: descanso e séries por tempo -->
+  <div class="timer" id="timer" hidden>
+    <div class="timer-card" role="dialog" aria-live="polite">
+      <div class="timer-topo">
+        <button class="timer-ic" id="timer-minimizar" title="Minimizar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="timer-tit"><b id="timer-rot">Descanso</b><span id="timer-sub"></span></div>
+        <button class="timer-ic" id="timer-fechar" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="timer-anel">
+        <svg viewBox="0 0 200 200"><circle class="fundo" cx="100" cy="100" r="88"/><circle class="arco" id="timer-arco" cx="100" cy="100" r="88" stroke-dasharray="552.92" stroke-dashoffset="0"/></svg>
+        <div class="timer-meio"><span id="timer-fase"></span><b id="timer-num">00:00</b></div>
+      </div>
+      <div class="timer-ajuste">
+        <button data-tajuste="-15">−15s</button>
+        <button data-tajuste="15">+15s</button>
+      </div>
+      <div class="timer-acoes">
+        <button class="btn ghost" id="timer-pausar">Pausar</button>
+        <button class="btn" id="timer-fim">Pular</button>
+      </div>
+    </div>
+    <div class="timer-mini" id="timer-mini">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>
+      <b id="timer-mini-num">00:00</b><span>descanso</span>
+      <button id="timer-mini-pular">pular</button>
+    </div>
   </div>
 </div>
 
@@ -362,6 +383,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=9"></script>
+<script type="module" src="./app.js?v=10"></script>
 </body>
 </html>
