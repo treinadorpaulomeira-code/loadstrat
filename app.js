@@ -167,6 +167,7 @@ function irPara(pagina) {
   $("#main").scrollTo(0, 0);
   window.scrollTo(0, 0);
   if (pagina === "biblioteca") desenharBiblioteca();
+  if (pagina === "periodizacao" && !$("#per-aluno").options.length) montarPeriodizacao();
 }
 $$(".navitem").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.nav)));
 $$("[data-ir]").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.ir)));
@@ -1092,6 +1093,7 @@ async function iniciarAluno() {
   await carregarBibliotecaAluno();
   await carregarCheckinHoje();
   await carregarTreinosAluno();
+  carregarAgua();
 }
 
 function telaAluno(qual) {
@@ -1102,6 +1104,9 @@ function telaAluno(qual) {
   window.scrollTo(0, 0);
   if (qual === "historico") carregarHistoricoAluno();
   if (qual === "checkin") desenharCheckin();
+  if (qual === "extra") { desenharExtraForm(); carregarExtrasAluno(); }
+  if (qual === "agua") desenharAgua();
+  if (qual === "calendario") abrirCalendario();
 }
 $$("[data-tela-nav]").forEach((b) =>
   b.addEventListener("click", () => telaAluno(b.dataset.telaNav)));
@@ -1192,6 +1197,9 @@ const ICONE = {
   executar: "<path d='M10 2h4M12 14l3-3'/><circle cx='12' cy='14' r='8'/>",
   checkin: "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
   historico: "<path d='M4 19V5M4 19h16M8 17V9M12 17V6M16 17v-5'/>",
+  extra: "<circle cx='13' cy='4' r='2'/><path d='M7 21l3-6 3 2v4M10 15l1-5 4 3 3 1M8 11l3-1'/>",
+  agua: "<path d='M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z'/>",
+  calendario: "<rect x='3' y='4' width='18' height='17' rx='2'/><path d='M3 9h18M8 2v4M16 2v4'/>",
 };
 const svgIcone = (k) => "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" + ICONE[k] + "</svg>";
 
@@ -1203,12 +1211,18 @@ function desenharAtalhosAluno() {
     "<button class='atalho' data-atalho='executar'" + (tem ? "" : " disabled") + ">" + svgIcone("executar") +
       "<b>Executar treino</b></button>" +
     bannerCheckin() +
+    "<button class='atalho' data-atalho='agua'>" + svgIcone("agua") +
+      (ag.meta ? "<span class='selo" + (ag.ml >= ag.meta ? " verde" : "") + "'>" + fmtNum(ag.ml / 1000) + " / " + fmtNum(ag.meta / 1000) + " L</span>" : "") +
+      "<b>Hidratação</b></button>" +
+    "<button class='atalho' data-atalho='extra'>" + svgIcone("extra") + "<b>Treino extra</b><small>Corrida, yoga, pelada…</small></button>" +
+    "<button class='atalho' data-atalho='calendario'>" + svgIcone("calendario") + "<b>Meu calendário</b></button>" +
     "<button class='atalho' data-atalho='historico'>" + svgIcone("historico") + "<b>Meu histórico</b></button>";
   $$("[data-atalho='executar']").forEach((b) => b.addEventListener("click", () => {
     if (!al.treinos.length) return;
     comecarTreino((al.treinos.find((t) => t.data === hojeISO()) ?? al.treinos[0]).id);
   }));
-  $$("[data-atalho='historico']").forEach((b) => b.addEventListener("click", () => telaAluno("historico")));
+  ["historico", "agua", "extra", "calendario"].forEach((t) =>
+    $$("[data-atalho='" + t + "']").forEach((b) => b.addEventListener("click", () => telaAluno(t))));
   ligarBannerCheckin();
 }
 
@@ -2032,6 +2046,9 @@ async function abrirPerfil(alunoId) {
   if (m.ok) desenharCarga(m.data);
   if (ck.ok) desenharCheckinsTreinador(ck.data ?? [], a.sexo === "F");
   desenharEvolucao();
+  desenharRM(a);
+  desenharPlanoNoPerfil(alunoId);
+  desenharExtrasEAgua(alunoId);
 }
 $("#pf-voltar").addEventListener("click", () => irPara("alunos"));
 $("#pf-prescrever").addEventListener("click", () => {
@@ -2094,6 +2111,7 @@ function desenharCheckinsTreinador(lista, feminino) {
 /* ---------- histórico de carga por exercício ---------- */
 async function carregarHistoricoExercicios(alunoId) {
   estado.histEx = {};
+  estado.setsAluno = [];
   const sess = await sb.from("session_logs").select("id,data").eq("aluno_id", alunoId).eq("finalizada", true)
     .order("data", { ascending: true }).limit(400);
   if (sess.error || !sess.data?.length) return;
@@ -2103,6 +2121,7 @@ async function carregarHistoricoExercicios(alunoId) {
   const sets = await sb.from("workout_sets").select("session_id,exercise_id,serie_num,carga_kg,reps,tempo_s,dist_m,concluida")
     .in("session_id", ids).eq("concluida", true);
   if (sets.error) return erro("Não consegui carregar o histórico por exercício");
+  estado.setsAluno = (sets.data ?? []).map((x) => ({ ...x, data: dataDe[x.session_id] }));
   (sets.data ?? []).forEach((s) => {
     const ex = (estado.histEx[s.exercise_id] ??= {});
     const k = s.session_id;
@@ -2263,4 +2282,673 @@ function protegerVideos(raiz = document) {
       v.replaceWith(aviso);
     });
   });
+}
+
+/* =========================================================
+   ETAPA 5 — PERIODIZAÇÃO (treinador)
+   Motor por regras, não "IA": fases do modelo clássico (Matveev/Bompa)
+   ou blocos ATR (Issurin), capacidades biomotoras por esporte
+   (Bompa & Buzzichelli), ondas 3:1 e polimento no fim.
+   ========================================================= */
+const ESPORTES = {
+  volei:      { n: "Vôlei",        caps: { forca: 4, potencia: 5, plio: 5, veloc: 4, agil: 4, anaer: 3, aer: 2, mob: 3 } },
+  futebol:    { n: "Futebol",      caps: { forca: 3, potencia: 4, plio: 3, veloc: 5, agil: 5, anaer: 4, aer: 4, mob: 3 } },
+  basquete:   { n: "Basquete",     caps: { forca: 3, potencia: 5, plio: 5, veloc: 4, agil: 4, anaer: 4, aer: 3, mob: 2 } },
+  corrida:    { n: "Corrida",      caps: { forca: 2, potencia: 2, plio: 2, veloc: 2, agil: 1, anaer: 3, aer: 5, mob: 3 } },
+  ciclismo:   { n: "Ciclismo",     caps: { forca: 3, potencia: 3, plio: 1, veloc: 2, agil: 1, anaer: 4, aer: 5, mob: 2 } },
+  natacao:    { n: "Natação",      caps: { forca: 4, potencia: 3, plio: 1, veloc: 3, agil: 1, anaer: 4, aer: 4, mob: 5 } },
+  tenis:      { n: "Tênis",        caps: { forca: 3, potencia: 4, plio: 3, veloc: 4, agil: 5, anaer: 4, aer: 3, mob: 3 } },
+  lutas:      { n: "Lutas / MMA",  caps: { forca: 4, potencia: 4, plio: 3, veloc: 3, agil: 4, anaer: 5, aer: 3, mob: 4 } },
+  crossfit:   { n: "CrossFit",     caps: { forca: 4, potencia: 4, plio: 3, veloc: 3, agil: 3, anaer: 4, aer: 4, mob: 3 } },
+  musculacao: { n: "Musculação",   caps: { forca: 5, potencia: 2, plio: 1, veloc: 1, agil: 1, anaer: 2, aer: 2, mob: 2 } },
+};
+const CAPNOMES = { forca: "Força", potencia: "Potência", plio: "Pliometria", veloc: "Velocidade", agil: "Agilidade",
+  anaer: "Resist. anaeróbia", aer: "Resist. aeróbia", mob: "Mobilidade" };
+const FASE_BASE = { "Prep. Geral": 0.62, "Prep. Específica": 0.8, "Pré-competitivo": 0.95, "Competitivo": 0.75, "Transição": 0.4,
+  "Acumulação": 0.7, "Transformação": 0.9, "Realização": 0.65 };
+
+function esporteDoPerfil(txt) {
+  const t = normalizar(txt);
+  if (!t) return "musculacao";
+  const achado = Object.entries(ESPORTES).find(([k, e]) => t.includes(normalizar(e.n).split(" ")[0]) || t.includes(k));
+  if (achado) return achado[0];
+  if (/mma|jiu|judo|boxe|muay|luta/.test(t)) return "lutas";
+  if (/bike|pedal/.test(t)) return "ciclismo";
+  if (/hipertrof|emagrec|saude|estetic/.test(t)) return "musculacao";
+  return "musculacao";
+}
+
+function fasesDoPlano(semanas, modelo) {
+  if (modelo === "atr") {
+    const seq = [["Acumulação", 4], ["Transformação", 3], ["Realização", 2]];
+    const out = []; let resta = semanas, i = 0;
+    while (resta > 0) { const [n, w] = seq[i % 3]; const x = Math.min(w, resta); out.push({ n, w: x }); resta -= x; i++; }
+    return out;
+  }
+  const div = [["Prep. Geral", 0.30], ["Prep. Específica", 0.25], ["Pré-competitivo", 0.20], ["Competitivo", 0.15], ["Transição", 0.10]];
+  let acc = 0;
+  const out = div.map(([n, f], k) => {
+    let w = Math.max(1, Math.round(semanas * f));
+    if (k === div.length - 1) w = Math.max(1, semanas - acc);
+    acc += w;
+    return { n, w };
+  });
+  let total = out.reduce((s, p) => s + p.w, 0);
+  while (total > semanas) { const maior = out.reduce((a, b) => (b.w > a.w ? b : a)); maior.w--; total--; }
+  while (total < semanas) { out[0].w++; total++; }
+  return out.filter((p) => p.w > 0);
+}
+function focoDaFase(fase, caps) {
+  const top = Object.entries(caps).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+  const f = {
+    "Prep. Geral": ["aer", "forca", "mob"], "Prep. Específica": [top[0], top[1], "forca"],
+    "Pré-competitivo": [top[0], top[1], top[2]], "Competitivo": [top[0], "veloc", "mob"], "Transição": ["mob", "aer"],
+    "Acumulação": ["aer", "forca", "mob"], "Transformação": [top[0], top[1], "anaer"], "Realização": [top[0], "veloc", "mob"],
+  };
+  return [...new Set(f[fase] || top.slice(0, 3))].slice(0, 3);
+}
+function nivelPlio(idx, total) {
+  const r = idx / (total - 1 || 1);
+  if (r < 0.3) return ["Baixa", "saltos no lugar, corda, skipping"];
+  if (r < 0.6) return ["Moderada", "box jumps, bounds, medicine ball"];
+  if (r < 0.85) return ["Alta (método de choque)", "drop jumps, saltos em profundidade"];
+  return ["Reativa / manutenção", "saltos específicos do gesto esportivo"];
+}
+function cargasSemanais(fases) {
+  const onda = [1, 1.1, 1.22, 0.68];
+  const out = [];
+  fases.forEach((f) => {
+    for (let i = 0; i < f.w; i++) out.push({ fase: f.n, v: (FASE_BASE[f.n] || 0.7) * onda[i % 4], descarga: i % 4 === 3 });
+  });
+  if (out.length > 2) { out[out.length - 2].v *= 0.6; out[out.length - 1].v *= 0.45; out[out.length - 2].polimento = out[out.length - 1].polimento = true; }
+  return out;
+}
+function microciclo(fase, caps, sess) {
+  const top = Object.entries(caps).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+  const geral = /Geral|Acumulação|Transição/.test(fase);
+  const pico = /Pré-comp|Competitivo|Realização|Transformação/.test(fase);
+  const menu = {
+    plio: { t: "Pliometria / potência", d: nivelPlio(pico ? 2 : 0, 4)[1], int: "alta" },
+    veloc: { t: "Velocidade / agilidade", d: "sprints curtos, mudanças de direção", int: "alta" },
+    agil: { t: "Velocidade / agilidade", d: "sprints curtos, mudanças de direção", int: "alta" },
+    forca: { t: "Força", d: geral ? "força geral, base estrutural, 8–12 reps" : "força máxima/específica, 3–6 reps", int: "alta" },
+    potencia: { t: "Potência de força", d: "levantamentos balísticos, 3–5 reps rápidas", int: "alta" },
+    anaer: { t: "Condicionamento anaeróbio", d: "intervalados intensos, sprints repetidos", int: "moderada" },
+    aer: { t: "Base aeróbia", d: "contínuo/regenerativo, zona 2", int: "baixa" },
+    mob: { t: "Mobilidade / recuperação", d: "mobilidade, core, tecido mole", int: "baixa" },
+  };
+  const fila = [];
+  focoDaFase(fase, caps).forEach((k) => menu[k] && !fila.includes(k) && fila.push(k));
+  top.forEach((k) => menu[k] && !fila.includes(k) && fila.push(k));
+  ["mob", "aer"].forEach((k) => !fila.includes(k) && fila.push(k));
+  const altas = fila.filter((k) => menu[k].int === "alta"), leves = fila.filter((k) => menu[k].int !== "alta");
+  const dias = []; let a = 0, l = 0;
+  for (let i = 0; i < sess; i++) {
+    let k;
+    if (i % 2 === 0 && a < altas.length) k = altas[a++];
+    else if (l < leves.length) k = leves[l++];
+    else if (a < altas.length) k = altas[a++];
+    else k = fila[i % fila.length];
+    dias.push(k);
+  }
+  if (pico && sess >= 3) dias[dias.length - 1] = "mob";
+  return dias.map((k, i) => ({ dia: i + 1, ...menu[k] }));
+}
+function rotuloSemana(v, max) {
+  const r = v / (max || 1);
+  return r < 0.55 ? "leve" : r < 0.8 ? "moderada" : "alta";
+}
+
+/* monta o plano completo (o que vai para o banco) */
+function gerarPlano({ esporte, semanas, sessoes, modelo, base, inicio }) {
+  const caps = ESPORTES[esporte].caps;
+  const fases = fasesDoPlano(semanas, modelo);
+  const cargas = cargasSemanais(fases);
+  const maxV = Math.max(...cargas.map((c) => c.v));
+  const semanasPlano = cargas.map((c, i) => {
+    const foco = focoDaFase(c.fase, caps);
+    return {
+      n: i + 1, fase: c.fase, v: +c.v.toFixed(3), ua: Math.round(base * c.v / 0.8),
+      rotulo: c.descarga || c.polimento ? "leve" : rotuloSemana(c.v, maxV),
+      descarga: !!c.descarga, polimento: !!c.polimento,
+      foco_aluno: foco.map((k) => CAPNOMES[k].toLowerCase()).join(" + "),
+    };
+  });
+  const mesos = fases.map((f, idx) => {
+    const [plio, plioDesc] = nivelPlio(idx, fases.length);
+    return { fase: f.n, semanas: f.w, foco: focoDaFase(f.n, caps).map((k) => CAPNOMES[k]), plio, plioDesc };
+  });
+  const chave = fases.find((f) => /Específica|Transformação/.test(f.n)) ?? fases[0];
+  const fim = new Date(inicio + "T12:00:00"); fim.setDate(fim.getDate() + semanas * 7 - 1);
+  return {
+    modelo, inicio, fim: fim.toISOString().slice(0, 10),
+    fases: {
+      versao: 1, esporte, esporte_nome: ESPORTES[esporte].n, sessoes, base_ua: base, semanas_total: semanas, modelo,
+      caps, fases, semanas: semanasPlano, mesos, fase_chave: chave.n, micro: microciclo(chave.n, caps, sessoes),
+    },
+  };
+}
+
+/* ---------- tela do planejador ---------- */
+const per = { esporte: "musculacao", modelo: "classico", plano: null, atual: null };
+
+function proximaSegunda() {
+  const d = new Date(); d.setHours(12);
+  const dia = d.getDay();
+  d.setDate(d.getDate() + (dia === 1 ? 0 : (8 - dia) % 7));
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function montarPeriodizacao(alunoId) {
+  const sel = $("#per-aluno");
+  sel.innerHTML = estado.alunos.length
+    ? estado.alunos.map((a) => "<option value='" + a.id + "'>" + escapar(a.nome) + "</option>").join("")
+    : "<option value=''>Cadastre um aluno primeiro</option>";
+  if (alunoId) sel.value = alunoId;
+  $("#per-sessoes").innerHTML = [2, 3, 4, 5, 6, 7].map((n) => "<option" + (n === 4 ? " selected" : "") + ">" + n + "</option>").join("");
+  if (!$("#per-inicio").value) $("#per-inicio").value = proximaSegunda();
+  trocarAlunoPer();
+}
+function desenharEsportes() {
+  $("#per-esportes").innerHTML = Object.entries(ESPORTES).map(([k, e]) =>
+    "<button type='button' class='chip" + (k === per.esporte ? " on" : "") + "' data-esporte='" + k + "'>" + e.n + "</button>").join("");
+  $$("[data-esporte]").forEach((b) => b.addEventListener("click", () => { per.esporte = b.dataset.esporte; desenharEsportes(); }));
+}
+async function trocarAlunoPer() {
+  const a = estado.alunos.find((x) => x.id === $("#per-aluno").value);
+  per.esporte = esporteDoPerfil(a?.esporte || a?.objetivo);
+  desenharEsportes();
+  $("#per-ativo").hidden = true;
+  $("#per-base").value = "";
+  $("#per-base-dica").textContent = "Usada para calcular a carga planejada de cada semana.";
+  if (!a) return;
+  const [plano, m] = await Promise.all([
+    sb.from("periodization").select("*").eq("aluno_id", a.id).order("criado_em", { ascending: false }).limit(1),
+    sb.rpc("metricas_carga", { _aluno: a.id }),
+  ]);
+  if ($("#per-aluno").value !== a.id) return;
+  const sess = parseInt($("#per-sessoes").value) || 4;
+  const cron = Number(m.data?.cronica_media) || 0;
+  $("#per-base").value = cron > 0 ? Math.round(cron) : sess * 360;
+  $("#per-base-dica").textContent = cron > 0
+    ? "Média das últimas 4 semanas de " + a.nome.split(" ")[0] + ". Pode ajustar."
+    : "Sem histórico suficiente: estimativa de " + sess + " sessões × 60 min × PSE 6. Pode ajustar.";
+  per.atual = plano.data?.[0] ?? null;
+  if (per.atual) {
+    const f = per.atual.fases ?? {};
+    $("#per-ativo").innerHTML = "<b>Plano ativo:</b> " + escapar(f.esporte_nome ?? "") + " · " + (f.semanas_total ?? "?") +
+      " semanas · início " + new Date(per.atual.inicio + "T12:00:00").toLocaleDateString("pt-BR") +
+      " <button type='button' class='link-sutil' id='per-ver-ativo'>ver</button>";
+    $("#per-ativo").hidden = false;
+    $("#per-ver-ativo").addEventListener("click", () => { per.plano = { modelo: per.atual.modelo, inicio: per.atual.inicio, fim: per.atual.fim, fases: per.atual.fases }; desenharPlano(true); });
+  }
+}
+$("#per-aluno").addEventListener("change", trocarAlunoPer);
+$$("#per-modelo button").forEach((b) => b.addEventListener("click", () => {
+  per.modelo = b.dataset.modelo;
+  $$("#per-modelo button").forEach((x) => x.classList.toggle("on", x === b));
+}));
+$("#per-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const cErro = $("#per-erro"); cErro.hidden = true;
+  const semanas = parseInt($("#per-semanas").value);
+  const base = parseInt($("#per-base").value);
+  const inicio = $("#per-inicio").value;
+  const falha = (m) => { cErro.textContent = m; cErro.hidden = false; };
+  if (!$("#per-aluno").value) return falha("Cadastre um aluno primeiro.");
+  if (!(semanas >= 4 && semanas <= 52)) return falha("A temporada precisa ter entre 4 e 52 semanas.");
+  if (!inicio) return falha("Escolha a data de início.");
+  if (!(base > 0 && base < 20000)) return falha("Informe a carga semanal de referência (UA).");
+  per.plano = gerarPlano({ esporte: per.esporte, semanas, sessoes: parseInt($("#per-sessoes").value) || 4, modelo: per.modelo, base, inicio });
+  desenharPlano(false);
+});
+
+const COR_FASE = ["#bfe0fb", "#8fc7f6", "#5aaaf1", "#2f97ef", "#1a74c9", "#1455b0", "#0f3f85"];
+function faixaFases(fases, total) {
+  return "<div class='macro'>" + fases.map((f, i) =>
+    "<div class='ph' style='flex:" + f.w + ";background:" + (f.n === "Transição" ? "#c9d2df" : COR_FASE[Math.min(i, COR_FASE.length - 1)]) +
+    ";color:" + (i >= 3 && f.n !== "Transição" ? "#fff" : "var(--text)") + "' title='" + escapar(f.n) + " · " + f.w + " sem'><b>" +
+    escapar(f.n) + "</b><span>" + f.w + " sem</span></div>").join("") + "</div>";
+}
+function desenharPlano(salvo) {
+  const p = per.plano, f = p.fases;
+  const caps = Object.entries(f.caps).sort((a, b) => b[1] - a[1]);
+  const aluno = estado.alunos.find((x) => x.id === $("#per-aluno").value);
+  $("#per-resultado").innerHTML =
+    "<div class='card'><div class='card-tit'><h2>" + escapar(f.esporte_nome) + " · " + escapar(aluno?.nome?.split(" ")[0] ?? "") + "</h2>" +
+      "<span class='mini'>" + f.semanas_total + " semanas · " + f.sessoes + " sessões/sem · " + (f.modelo === "atr" ? "Blocos ATR (Issurin)" : "Clássico (Matveev/Bompa)") + "</span></div>" +
+      faixaFases(f.fases, f.semanas_total) +
+      "<p class='mini' style='margin-top:8px'>" + new Date(p.inicio + "T12:00:00").toLocaleDateString("pt-BR") + " → " +
+      new Date(p.fim + "T12:00:00").toLocaleDateString("pt-BR") + "</p></div>" +
+
+    "<div class='card'><div class='card-tit'><h2>Carga semanal planejada</h2><span class='mini'>ondas 3:1 e polimento nas 2 últimas semanas · UA</span></div>" +
+      "<div class='grafico' id='per-graf'></div></div>" +
+
+    "<div class='grid g2 per-duo'><div class='card'><h2 class='h2c'>Prioridade das capacidades</h2><div class='caps'>" +
+      caps.map(([k, v]) => "<div class='cap'><span>" + CAPNOMES[k] + "</span><div class='trilho'><i style='width:" + v * 20 + "%'></i></div><b>" + v + "</b></div>").join("") +
+    "</div></div><div class='card'><h2 class='h2c'>Microciclo da fase-chave · " + escapar(f.fase_chave) + "</h2><div class='micro'>" +
+      f.micro.map((d) => "<div class='drow'><span class='dd'>Sessão " + d.dia + "</span><div><b>" + escapar(d.t) + "</b><span>" + escapar(d.d) + "</span></div>" +
+        "<span class='pill " + (d.int === "alta" ? "vermelho" : d.int === "moderada" ? "ambar" : "verde") + "'>" + d.int + "</span></div>").join("") +
+      "</div><p class='mini' style='margin-top:10px'>Neural primeiro (velocidade, potência, pliometria), força depois, resistência por último; 48h entre sessões intensas da mesma qualidade.</p></div></div>" +
+
+    "<div class='sechd'><h2>Mesociclos</h2></div><div class='mesos'>" +
+      f.mesos.map((m, i) => "<div class='card meso'><span class='meso-n' style='background:" + (m.fase === "Transição" ? "#c9d2df" : COR_FASE[Math.min(i, COR_FASE.length - 1)]) + "'></span>" +
+        "<b>" + escapar(m.fase) + "</b><span class='mini'>" + m.semanas + " semana" + (m.semanas > 1 ? "s" : "") + "</span>" +
+        "<div class='meso-l'><span>Foco</span>" + m.foco.map(escapar).join(" · ") + "</div>" +
+        "<div class='meso-l'><span>Pliometria</span>" + escapar(m.plio) + " — " + escapar(m.plioDesc) + "</div></div>").join("") + "</div>" +
+
+    "<div class='per-acoes'>" + (salvo ? "<span class='mini'>Este é o plano salvo. Gere outro para substituí-lo.</span>"
+      : "<button class='btn' id='per-salvar'>Salvar plano para o aluno</button><span class='mini'>O aluno vê só a fase, a semana e rótulos (leve/moderada/alta) — nunca UA.</span>") + "</div>" +
+    "<p class='mini per-refs'>Bases: Bompa &amp; Buzzichelli (fases e capacidades biomotoras); Bompa &amp; Haff; Issurin (blocos ATR); Matveev (modelo clássico); Verkhoshansky (pliometria/choque).</p>";
+
+  graficoBarras($("#per-graf"), f.semanas.map((s) => ({
+    rotulo: "S" + s.n, valor: s.ua,
+    dica: "Semana " + s.n + " · " + s.fase + (s.descarga ? " · descarga" : s.polimento ? " · polimento" : ""),
+  })), { unidade: "UA", rotuloCada: f.semanas.length > 20 ? 4 : f.semanas.length > 12 ? 2 : 1 });
+  $("#per-salvar")?.addEventListener("click", salvarPlano);
+}
+async function salvarPlano() {
+  const btn = $("#per-salvar");
+  const alunoId = $("#per-aluno").value;
+  btn.disabled = true; btn.textContent = "Salvando…";
+  const p = per.plano;
+  const r = await comTratamento(
+    sb.from("periodization").insert({ treinador_id: estado.usuario.id, aluno_id: alunoId, modelo: p.modelo,
+      inicio: p.inicio, fim: p.fim, fases: p.fases }).select().single(),
+    "Não consegui salvar o plano");
+  if (!r.ok) { btn.disabled = false; btn.textContent = "Salvar plano para o aluno"; return; }
+  const conf = await sb.from("periodization").select("id,fases").eq("id", r.data.id).maybeSingle();
+  if (!conf.data || conf.data.fases?.semanas?.length !== p.fases.semanas.length) {
+    btn.disabled = false; btn.textContent = "Salvar plano para o aluno";
+    return erro("O plano foi enviado, mas a conferência não bateu. Recarregue e verifique.");
+  }
+  bom("Plano salvo — " + estado.alunos.find((a) => a.id === alunoId)?.nome.split(" ")[0] + " já vê a fase no calendário");
+  per.atual = r.data;
+  desenharPlano(true);
+  trocarAlunoPer();
+}
+
+/* ---------- no perfil do aluno: planejado × realizado ---------- */
+async function desenharPlanoNoPerfil(alunoId) {
+  const alvo = $("#pf-plano");
+  const r = await sb.from("periodization").select("*").eq("aluno_id", alunoId).order("criado_em", { ascending: false }).limit(1);
+  if (estado.perfilAberto?.id !== alunoId) return;
+  const p = r.data?.[0];
+  if (!p || !p.fases?.semanas?.length) {
+    alvo.innerHTML = "<div class='g-vazio'>Nenhuma periodização salva para este aluno. <a class='link-sutil' data-abrir-plano>Criar agora</a></div>";
+    alvo.querySelector("[data-abrir-plano]").addEventListener("click", abrirPlanejador);
+    return;
+  }
+  const f = p.fases;
+  const hoje = hojeISO();
+  const semAtual = Math.floor((new Date(hoje + "T12:00:00") - new Date(p.inicio + "T12:00:00")) / (7 * 864e5)) + 1;
+  const ate = hoje < p.fim ? hoje : p.fim;
+  const real = {};
+  if (hoje >= p.inicio) {
+    const c = await sb.rpc("carga_diaria", { _aluno: alunoId, _de: p.inicio, _ate: ate });
+    (c.data ?? []).forEach((d) => {
+      const n = Math.floor((new Date(d.dia + "T12:00:00") - new Date(p.inicio + "T12:00:00")) / (7 * 864e5)) + 1;
+      real[n] = (real[n] ?? 0) + Number(d.carga);
+    });
+  }
+  const s = f.semanas.find((x) => x.n === semAtual);
+  const feitas = f.semanas.filter((x) => x.n < semAtual);
+  const aderencia = feitas.length ? feitas.reduce((acc, x) => acc + Math.min(1.5, (real[x.n] ?? 0) / (x.ua || 1)), 0) / feitas.length : null;
+  alvo.innerHTML =
+    "<div class='plano-topo'><div><span class='mini'>" + escapar(f.esporte_nome) + " · " + (p.modelo === "atr" ? "Blocos ATR" : "Clássico") + "</span>" +
+    "<b>" + (semAtual < 1 ? "Começa em " + new Date(p.inicio + "T12:00:00").toLocaleDateString("pt-BR")
+      : semAtual > f.semanas.length ? "Plano concluído" : escapar(s.fase) + " · semana " + semAtual + " de " + f.semanas.length) + "</b>" +
+    (s ? "<span class='mini'>foco: " + escapar(s.foco_aluno) + (s.descarga ? " · semana de descarga" : "") + "</span>" : "") + "</div>" +
+    (aderencia != null ? "<div class='aderencia'><b>" + Math.round(aderencia * 100) + "%</b><span class='mini'>carga realizada ÷ planejada</span></div>" : "") + "</div>" +
+    faixaFases(f.fases, f.semanas.length) +
+    "<div class='legenda'><span><i class='lg-plan'></i>Planejado</span><span><i class='lg-real'></i>Realizado</span></div>" +
+    "<div class='grafico' id='pf-graf-plano'></div>";
+  graficoPlanReal($("#pf-graf-plano"), f.semanas.map((x) => ({
+    rotulo: "S" + x.n, plan: x.ua, real: x.n <= semAtual ? Math.round(real[x.n] ?? 0) : null, atual: x.n === semAtual,
+    dica: "Semana " + x.n + " · " + x.fase,
+  })));
+}
+function abrirPlanejador() {
+  irPara("periodizacao");
+  montarPeriodizacao(estado.perfilAberto?.id);
+}
+$("#pf-ir-plano").addEventListener("click", abrirPlanejador);
+
+/* duas séries: planejado (cinza, referência) e realizado (azul) */
+function graficoPlanReal(el, pontos) {
+  const { W, H, m, y, grade } = moldura(el, pontos.map((p) => ({ valor: Math.max(p.plan, p.real ?? 0) })), 220);
+  const faixa = (W - m.l - m.r) / pontos.length;
+  const larg = Math.max(2, Math.min(12, faixa / 2 - 2));
+  const barra = (cx, v, cor) => {
+    if (!v) return "";
+    const topo = y(v), base = y(0), r = Math.min(3, larg / 2, base - topo);
+    return `<path d="M${cx - larg / 2},${base} V${topo + r} Q${cx - larg / 2},${topo} ${cx - larg / 2 + r},${topo} H${cx + larg / 2 - r} Q${cx + larg / 2},${topo} ${cx + larg / 2},${topo + r} V${base} Z" fill="${cor}"/>`;
+  };
+  const cada = pontos.length > 20 ? 4 : pontos.length > 12 ? 2 : 1;
+  let marcas = "", rot = "", alvos = "";
+  pontos.forEach((p, i) => {
+    const cx = m.l + faixa * i + faixa / 2;
+    marcas += barra(cx - larg / 2 - 1, p.plan, "#c9d2df") + barra(cx + larg / 2 + 1, p.real, COR_SERIE);
+    if (p.atual) marcas += `<rect x="${m.l + faixa * i}" y="${m.t}" width="${faixa}" height="${H - m.t - m.b}" fill="${COR_SERIE}" opacity=".06"/>`;
+    if (i % cada === 0 || i === pontos.length - 1)
+      rot += `<text x="${cx}" y="${H - 8}" class="g-eixo" text-anchor="middle"${p.atual ? ' style="font-weight:800;fill:var(--azul-dim)"' : ""}>${escapar(p.rotulo)}</text>`;
+    alvos += `<rect x="${m.l + faixa * i}" y="${m.t}" width="${faixa}" height="${H - m.t - m.b}" fill="transparent" data-i="${i}"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Carga planejada e realizada por semana">
+    ${grade}<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" class="g-base"/>${marcas}${rot}${alvos}</svg>`;
+  el.querySelectorAll("rect[data-i]").forEach((r) => {
+    const p = pontos[+r.dataset.i];
+    const f = (ev) => mostrarDica(ev, `<b>${escapar(p.dica)}</b><span>planejado ${fmt(p.plan)} UA</span>` +
+      `<span>${p.real == null ? "ainda não chegou" : "realizado " + fmt(p.real) + " UA"}</span>`);
+    r.addEventListener("mousemove", f);
+    r.addEventListener("touchstart", f, { passive: true });
+    r.addEventListener("mouseleave", esconderDica);
+  });
+}
+
+/* =========================================================
+   1RM ESTIMADO (treinador) — Epley e Brzycki, relativo ao peso
+   ========================================================= */
+const epley = (kg, reps) => (reps <= 1 ? kg : kg * (1 + reps / 30));
+const brzycki = (kg, reps) => (reps <= 1 ? kg : kg * 36 / (37 - reps));
+/* padrões de força relativa (× peso corporal): [novato, intermediário, avançado, elite] */
+const PADRAO_FORCA = {
+  agachamento: { M: [1.0, 1.5, 2.0, 2.5], F: [0.5, 1.0, 1.5, 2.0] },
+  terra:       { M: [1.25, 1.75, 2.25, 2.75], F: [0.6, 1.1, 1.6, 2.1] },
+  supino:      { M: [0.75, 1.25, 1.75, 2.25], F: [0.4, 0.7, 1.0, 1.3] },
+  desenvolvimento: { M: [0.5, 0.75, 1.0, 1.35], F: [0.3, 0.45, 0.6, 0.85] },
+  remada:      { M: [0.6, 1.0, 1.4, 1.8], F: [0.35, 0.6, 0.9, 1.2] },
+};
+function liftDe(nome) {
+  const t = normalizar(nome);
+  if (/agachamento (livre|com barra|back)|^agachamento$|back squat/.test(t)) return "agachamento";
+  if (/levantamento terra|^terra|deadlift/.test(t) && !/romeno|stiff/.test(t)) return "terra";
+  if (/supino reto (com )?barra|^supino reto$|bench/.test(t)) return "supino";
+  if (/desenvolvimento (militar|com barra)|overhead|ohp/.test(t)) return "desenvolvimento";
+  if (/remada curvada/.test(t)) return "remada";
+  return null;
+}
+function nivelForca(lift, rel, sexo) {
+  const s = PADRAO_FORCA[lift]?.[sexo === "F" ? "F" : "M"];
+  if (!s || !sexo) return null;
+  if (rel < s[0]) return ["Iniciante", ""];
+  if (rel < s[1]) return ["Novato", ""];
+  if (rel < s[2]) return ["Intermediário", "azul"];
+  if (rel < s[3]) return ["Avançado", "verde"];
+  return ["Elite", "roxo"];
+}
+function desenharRM(aluno) {
+  const sets = estado.setsAluno ?? [];
+  const porEx = {};
+  sets.forEach((s) => {
+    const kg = Number(s.carga_kg), reps = Number(s.reps);
+    if (!(kg > 0 && reps >= 1)) return;
+    const reg = (porEx[s.exercise_id] ??= { melhor: null, longas: 0 });
+    if (reps > 12) { reg.longas++; return; }
+    const e = epley(kg, reps), b = brzycki(kg, reps), med = (e + b) / 2;
+    if (!reg.melhor || med > reg.melhor.med) reg.melhor = { kg, reps, e, b, med, data: s.data };
+  });
+  const linhas = Object.entries(porEx).map(([id, r]) => ({ id, nome: estado.exercicios.find((e) => e.id === id)?.nome ?? "Exercício", ...r }))
+    .filter((r) => r.melhor || r.longas)
+    .sort((a, b) => (b.melhor?.med ?? 0) - (a.melhor?.med ?? 0));
+  const peso = Number(aluno.peso_kg) || null;
+  $("#rm-sub").textContent = "média de Epley e Brzycki · séries de até 12 reps" + (peso ? " · peso " + fmtNum(peso) + " kg" : " · sem peso no cadastro");
+  $("#pf-rm").innerHTML = linhas.length ? linhas.map((r) => {
+    if (!r.melhor) return "<tr><td><b>" + escapar(r.nome) + "</b></td><td colspan='6' class='mini'>só séries acima de 12 reps — estimativa pouco confiável</td></tr>";
+    const m = r.melhor, rel = peso ? m.med / peso : null;
+    const lift = liftDe(r.nome), nv = rel ? nivelForca(lift, rel, aluno.sexo) : null;
+    return "<tr><td><b>" + escapar(r.nome) + "</b></td><td>" + fmtNum(m.kg) + " kg × " + m.reps +
+      (m.reps > 10 ? " <span class='pill ambar' title='Acima de 10 reps a estimativa perde precisão'>série longa</span>" : "") +
+      "<div class='mini'>" + (m.data ? new Date(m.data + "T12:00:00").toLocaleDateString("pt-BR") : "") + "</div></td>" +
+      "<td>" + fmt(m.e, 1) + "</td><td>" + fmt(m.b, 1) + "</td><td><b>" + fmt(m.med, 1) + " kg</b></td>" +
+      "<td>" + (rel ? fmt(rel, 2) + "×" : "<span class='mini'>sem peso</span>") + "</td>" +
+      "<td>" + (nv ? "<span class='pill " + nv[1] + "'>" + nv[0] + "</span>" : "<span class='mini'>—</span>") + "</td></tr>";
+  }).join("") : "<tr><td colspan='7' class='vazio'>Aparece quando o aluno registrar séries de carga × reps.</td></tr>";
+}
+
+/* ---------- treinos adicionais e hidratação vistos pelo treinador ---------- */
+async function desenharExtrasEAgua(alunoId) {
+  const de28 = new Date(Date.now() - 27 * 864e5).toISOString().slice(0, 10);
+  const de7 = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const [ex, hid] = await Promise.all([
+    sb.from("extra_sessions").select("*").eq("aluno_id", alunoId).gte("data", de28).order("data", { ascending: false }),
+    sb.from("hidratacao").select("*").eq("aluno_id", alunoId).gte("data", de7).order("data"),
+  ]);
+  if (estado.perfilAberto?.id !== alunoId) return;
+  $("#pf-extras").innerHTML = (ex.data ?? []).length ? ex.data.map((e) =>
+    "<tr><td>" + new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + "</td><td><b>" + escapar(e.tipo) + "</b>" +
+    (e.descricao ? "<div class='mini'>" + escapar(e.descricao) + "</div>" : "") + "</td><td>" + (e.duracao_min ?? "—") + " min</td><td>" + (e.pse ?? "—") +
+    "</td><td>" + (e.pse && e.duracao_min ? fmt(e.pse * e.duracao_min) : "—") + "</td></tr>").join("")
+    : "<tr><td colspan='5' class='vazio'>Nenhuma atividade extra registrada.</td></tr>";
+  const dias = Array.from({ length: 7 }, (_, k) => new Date(Date.now() - (6 - k) * 864e5).toISOString().slice(0, 10));
+  const por = {}; (hid.data ?? []).forEach((h) => (por[h.data] = h));
+  const meta = (d) => por[d]?.meta_ml || metaAguaPadrao(estado.perfilAberto?.peso_kg, false);
+  const pct = dias.map((d) => (por[d] ? Math.min(1.5, por[d].ml / meta(d)) : 0));
+  const comReg = pct.filter((x, k) => por[dias[k]]);
+  $("#pf-agua").innerHTML = "<div class='agua-sem'>" + dias.map((d, k) =>
+    "<div class='agua-d' title='" + (por[d] ? fmtNum(por[d].ml / 1000) + " L de " + fmtNum(meta(d) / 1000) + " L" : "sem registro") + "'>" +
+    "<div class='agua-col'><i style='height:" + Math.min(100, Math.round(pct[k] * 100)) + "%'></i></div>" +
+    "<span>" + ["D", "S", "T", "Q", "Q", "S", "S"][new Date(d + "T12:00:00").getDay()] + "</span></div>").join("") + "</div>" +
+    "<p class='mini'>" + (comReg.length ? "Média " + Math.round(comReg.reduce((a, b) => a + Math.min(1, b), 0) / comReg.length * 100) +
+      "% da meta nos " + comReg.length + " dias com registro." : "Nenhum registro de água nesta semana.") + "</p>";
+}
+
+/* =========================================================
+   ALUNO — treino extra, hidratação e calendário
+   Regra: o aluno vê rótulos (leve/moderado/alta), nunca UA.
+   ========================================================= */
+const TIPOS_EXTRA = ["Corrida", "Caminhada", "Bike", "Natação", "Yoga", "Pilates", "Futebol", "Luta", "Outro"];
+const ex5 = { tipo: null, min: 40, pse: null, quando: 0 };
+
+function desenharExtraForm() {
+  ex5.tipo = null; ex5.min = 40; ex5.pse = null; ex5.quando = 0;
+  $("#extra-form").innerHTML =
+    "<div class='ck-bloco'><h3>O que você fez?</h3><div class='chips' id='ex-tipos'>" +
+      TIPOS_EXTRA.map((t) => "<button type='button' class='chip' data-tipo='" + t + "'>" + t + "</button>").join("") + "</div>" +
+      "<input id='ex-desc' class='campo-linha' maxlength='120' placeholder='Detalhe (opcional): ex. 5 km leve, aula de vinyasa'></div>" +
+    "<div class='ck-bloco'><h3>Quando?</h3><div class='fmode'><button type='button' class='on' data-quando='0'>Hoje</button><button type='button' data-quando='1'>Ontem</button></div></div>" +
+    "<div class='ck-bloco'><h3>Duração</h3><div class='passo'><button type='button' data-min='-5'>−</button><b id='ex-min'>40 min</b><button type='button' data-min='5'>+</button></div></div>" +
+    "<div class='ck-bloco'><h3>Quão puxado foi?</h3><div class='pse-legenda'><span>muito leve</span><span>máximo</span></div>" +
+      "<div class='pse-grade'>" + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => "<button type='button' data-expse='" + n + "'>" + n + "</button>").join("") + "</div>" +
+      "<p class='mini' id='ex-rot'>Toque para avaliar o esforço</p></div>" +
+    "<div id='ex-erro' class='erro' hidden></div>" +
+    "<button class='btn bloco' id='ex-salvar'>Registrar atividade</button>" +
+    "<p class='mini ex-porque'>Se você treina por fora e seu treinador não sabe, ele pode achar que você está descansado. Registrar tudo protege você de excesso e lesão.</p>";
+  $$("[data-tipo]").forEach((b) => b.addEventListener("click", () => {
+    ex5.tipo = b.dataset.tipo; $$("[data-tipo]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $$("[data-quando]").forEach((b) => b.addEventListener("click", () => {
+    ex5.quando = +b.dataset.quando; $$("[data-quando]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $$("[data-min]").forEach((b) => b.addEventListener("click", () => {
+    ex5.min = Math.max(5, Math.min(480, ex5.min + +b.dataset.min)); $("#ex-min").textContent = ex5.min + " min";
+  }));
+  $$("[data-expse]").forEach((b) => b.addEventListener("click", () => {
+    ex5.pse = +b.dataset.expse; $$("[data-expse]").forEach((x) => x.classList.toggle("on", x === b));
+    $("#ex-rot").textContent = "Esforço " + rotuloPSE(ex5.pse);
+  }));
+  $("#ex-salvar").addEventListener("click", salvarExtra);
+}
+async function salvarExtra() {
+  const cErro = $("#ex-erro"); cErro.hidden = true;
+  const falta = [!ex5.tipo && "o que você fez", !ex5.pse && "o esforço"].filter(Boolean);
+  if (falta.length) { cErro.textContent = "Falta responder: " + falta.join(" e ") + "."; cErro.hidden = false; return; }
+  const btn = $("#ex-salvar"); btn.disabled = true; btn.textContent = "Salvando…";
+  const d = new Date(); d.setDate(d.getDate() - ex5.quando);
+  const data = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const r = await comTratamento(sb.from("extra_sessions").insert({
+    aluno_id: estado.usuario.id, tipo: ex5.tipo, descricao: $("#ex-desc").value.trim() || null,
+    duracao_min: ex5.min, pse: ex5.pse, data,
+  }).select().single(), "Não consegui registrar a atividade");
+  btn.disabled = false; btn.textContent = "Registrar atividade";
+  if (!r.ok) return;
+  const conf = await sb.from("extra_sessions").select("id").eq("id", r.data.id).maybeSingle();
+  if (!conf.data) { cErro.textContent = "Não consegui confirmar o registro. Tente de novo."; cErro.hidden = false; return; }
+  bom(ex5.tipo + " registrado — entra na sua carga");
+  desenharExtraForm();
+  carregarExtrasAluno();
+}
+async function carregarExtrasAluno() {
+  const seg = new Date(); seg.setDate(seg.getDate() - ((seg.getDay() + 6) % 7));
+  const de = seg.getFullYear() + "-" + String(seg.getMonth() + 1).padStart(2, "0") + "-" + String(seg.getDate()).padStart(2, "0");
+  const r = await sb.from("extra_sessions").select("*").eq("aluno_id", estado.usuario.id).gte("data", de).order("data", { ascending: false });
+  const lista = r.data ?? [];
+  $("#extra-sub").textContent = lista.length ? lista.length + (lista.length === 1 ? " registro" : " registros") : "";
+  $("#extra-lista").innerHTML = lista.length ? lista.map((e) =>
+    "<div class='hist-item'><div class='linha1'><b>" + escapar(e.tipo) + "</b><span class='pill'>" +
+    new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }) + "</span>" +
+    "<button class='rm-extra' data-rmextra='" + e.id + "' title='Apagar'>×</button></div>" +
+    "<div class='dados'>" + (e.descricao ? escapar(e.descricao) + " · " : "") + e.duracao_min + " min · esforço " + rotuloPSE(e.pse) + "</div></div>").join("")
+    : "<div class='vazio-hoje'><b>Nada extra nesta semana</b>Treinou por fora? Registre acima.</div>";
+  $$("[data-rmextra]").forEach((b) => b.addEventListener("click", async () => {
+    const x = await comTratamento(sb.from("extra_sessions").delete().eq("id", b.dataset.rmextra), "Não consegui apagar");
+    if (x.ok) { bom("Atividade apagada"); carregarExtrasAluno(); }
+  }));
+}
+
+/* ---------- hidratação ---------- */
+const DICAS_AGUA = [
+  ["Antes do treino", "Chegue já hidratado — comece a beber horas antes, não só na hora."],
+  ["Durante", "Em treinos de até 1 hora, água costuma bastar. Goles regulares valem mais que tudo de uma vez."],
+  ["Treinos longos ou no calor", "Acima de 1 hora ou suando muito, bebidas com eletrólitos ajudam a repor o sódio."],
+  ["Como saber se está bem", "Urina clara indica boa hidratação; quanto mais escura, mais atenção."],
+];
+function metaAguaPadrao(peso, treinou) {
+  const base = Math.round(((Number(peso) || 70) * 35) / 100) * 100;
+  return Math.max(1500, Math.min(6000, base + (treinou ? 500 : 0)));
+}
+const ag = { ml: 0, meta: 0, historico: [] };
+async function carregarAgua() {
+  const hoje = hojeISO();
+  const [h, sess, extras] = await Promise.all([
+    sb.from("hidratacao").select("*").eq("aluno_id", estado.usuario.id).eq("data", hoje).maybeSingle(),
+    sb.from("session_logs").select("id").eq("aluno_id", estado.usuario.id).eq("data", hoje).limit(1),
+    sb.from("extra_sessions").select("id").eq("aluno_id", estado.usuario.id).eq("data", hoje).limit(1),
+  ]);
+  const treinou = (sess.data ?? []).length > 0 || (extras.data ?? []).length > 0 || al.treinos.some((t) => t.data === hoje);
+  ag.ml = h.data?.ml ?? 0;
+  ag.meta = estado.perfil.meta_agua_ml || h.data?.meta_ml || metaAguaPadrao(estado.perfil.peso_kg, treinou);
+  ag.treinou = treinou;
+  desenharAtalhosAluno();
+  if ($("[data-tela='agua']").classList.contains("on")) desenharAgua();
+}
+function desenharAgua() {
+  const pct = Math.min(1, ag.ml / ag.meta);
+  const C = 2 * Math.PI * 70;
+  $("#agua-sub").textContent = estado.perfil.meta_agua_ml ? "Meta definida por você." :
+    "Meta calculada pelo seu peso" + (ag.treinou ? " + 500 ml porque hoje é dia de treino." : ".");
+  $("#agua-corpo").innerHTML =
+    "<div class='agua-card'><div class='agua-anel'><svg viewBox='0 0 160 160'><circle class='fundo' cx='80' cy='80' r='70'/>" +
+      "<circle class='arco' cx='80' cy='80' r='70' stroke-dasharray='" + C.toFixed(1) + "' stroke-dashoffset='" + (C * (1 - pct)).toFixed(1) + "'/></svg>" +
+      "<div class='agua-meio'><b id='agua-ml'>" + fmtNum(ag.ml / 1000) + " L</b><span>de " + fmtNum(ag.meta / 1000) + " L</span></div></div>" +
+      "<p class='agua-status'>" + (pct >= 1 ? "Meta de hoje batida!" : "Faltam " + fmtNum((ag.meta - ag.ml) / 1000) + " L") + "</p>" +
+      "<div class='agua-botoes'>" + [200, 300, 500, 750].map((ml) => "<button data-agua='" + ml + "'><b>+" + ml + "</b><span>ml</span></button>").join("") + "</div>" +
+      "<div class='agua-rodape'><button class='link-sutil' id='agua-desfazer'" + (ag.historico.length ? "" : " hidden") + ">desfazer último</button>" +
+      "<button class='link-sutil' id='agua-meta'>ajustar minha meta</button></div></div>" +
+    "<div class='sechd'><h2>Dicas de hidratação</h2></div>" +
+    DICAS_AGUA.map(([t, d]) => "<div class='ck-bloco dica'><b>" + t + "</b><p>" + d + "</p></div>").join("") +
+    "<p class='mini' style='margin-top:6px'>Orientações gerais. Plano alimentar e suplementação são com o seu nutricionista.</p>";
+  $$("[data-agua]").forEach((b) => b.addEventListener("click", () => somarAgua(+b.dataset.agua)));
+  $("#agua-desfazer").addEventListener("click", () => { const u = ag.historico.pop(); if (u) somarAgua(-u, true); });
+  $("#agua-meta").addEventListener("click", ajustarMetaAgua);
+}
+async function somarAgua(ml, desfazendo) {
+  ag.ml = Math.max(0, ag.ml + ml);             // resposta imediata; o banco confirma logo depois
+  if (!desfazendo) ag.historico.push(ml);
+  desenharAgua();
+  const r = await comTratamento(sb.rpc("adicionar_agua", { _data: hojeISO(), _ml: ml, _meta: ag.meta }), "Não consegui salvar a água");
+  if (!r.ok) { ag.ml = Math.max(0, ag.ml - ml); if (!desfazendo) ag.historico.pop(); desenharAgua(); return; }
+  ag.ml = r.data?.ml ?? ag.ml;                  // vale o que está no banco
+  desenharAgua();
+  desenharAtalhosAluno();
+}
+function ajustarMetaAgua() {
+  abrirModal("<h3>Minha meta de água</h3><p class='desc'>Deixe em branco para o app calcular pelo seu peso (35 ml por kg, +500 ml em dia de treino).</p>" +
+    "<label class='campo'><span>Meta diária (ml)</span><input id='meta-ml' type='number' inputmode='numeric' min='500' max='10000' step='100' value='" + (estado.perfil.meta_agua_ml ?? "") + "' placeholder='" + metaAguaPadrao(estado.perfil.peso_kg, ag.treinou) + "'></label>" +
+    "<div id='meta-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='meta-cancelar'>Cancelar</button><button class='btn' id='meta-salvar'>Salvar</button></div>");
+  $("#meta-cancelar").addEventListener("click", fecharModal);
+  $("#meta-salvar").addEventListener("click", async () => {
+    const v = $("#meta-ml").value.trim(); const n = v ? parseInt(v) : null;
+    if (n != null && !(n >= 500 && n <= 10000)) { $("#meta-erro").textContent = "Use um valor entre 500 e 10.000 ml."; $("#meta-erro").hidden = false; return; }
+    const r = await comTratamento(sb.from("profiles").update({ meta_agua_ml: n }).eq("id", estado.usuario.id).select().single(), "Não consegui salvar a meta");
+    if (!r.ok) return;
+    estado.perfil.meta_agua_ml = r.data.meta_agua_ml;
+    fecharModal();
+    await carregarAgua();
+    desenharAgua();
+    bom("Meta atualizada");
+  });
+}
+
+/* ---------- calendário ---------- */
+const cal = { mes: null, plano: undefined, dias: {} };
+const ROT_CAL = { leve: "Leve", moderada: "Moderada", alta: "Alta" };
+function rotuloDia(pse) { return !pse ? null : pse <= 4 ? "leve" : pse <= 6 ? "moderada" : "alta"; }
+async function abrirCalendario() {
+  if (!cal.mes) { const d = new Date(); cal.mes = new Date(d.getFullYear(), d.getMonth(), 1, 12); }
+  const [p] = await Promise.all([sb.rpc("plano_do_aluno"), carregarMesCal()]);
+  cal.plano = p.error ? null : p.data;
+  desenharPlanoAluno();
+  desenharMesCal();
+}
+async function carregarMesCal() {
+  const a = cal.mes, ini = new Date(a.getFullYear(), a.getMonth(), 1, 12), fim = new Date(a.getFullYear(), a.getMonth() + 1, 0, 12);
+  const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const [s, e] = await Promise.all([
+    sb.from("session_logs").select("data,pse,duracao_min,workout_id,finalizada").eq("aluno_id", estado.usuario.id).eq("finalizada", true).gte("data", iso(ini)).lte("data", iso(fim)),
+    sb.from("extra_sessions").select("data,pse,duracao_min,tipo").eq("aluno_id", estado.usuario.id).gte("data", iso(ini)).lte("data", iso(fim)),
+  ]);
+  const nomes = {}; al.treinos.forEach((t) => (nomes[t.id] = t.nome));
+  cal.dias = {};
+  (s.data ?? []).forEach((x) => (cal.dias[x.data] ??= []).push({ nome: nomes[x.workout_id] ?? "Treino", pse: x.pse, min: x.duracao_min }));
+  (e.data ?? []).forEach((x) => (cal.dias[x.data] ??= []).push({ nome: x.tipo + " (extra)", pse: x.pse, min: x.duracao_min }));
+}
+function desenharPlanoAluno() {
+  const p = cal.plano, alvo = $("#cal-plano");
+  if (!p || !p.semanas?.length) { alvo.innerHTML = ""; return; }
+  const n = p.semana_atual, s = p.semanas.find((x) => x.n === n);
+  const titulo = n < 1 ? "Seu plano começa em " + new Date(p.inicio + "T12:00:00").toLocaleDateString("pt-BR")
+    : n > p.total ? "Plano concluído — fale com seu treinador sobre o próximo" : s.fase;
+  const prox = p.semanas.filter((x) => x.n > Math.max(0, n)).slice(0, 3);
+  alvo.innerHTML = "<div class='plano-aluno'><span class='tag'>" + escapar(p.esporte ?? "Seu plano") + "</span>" +
+    "<b>" + escapar(titulo) + "</b>" +
+    (s ? "<span>Semana " + n + " de " + p.total + " · foco: " + escapar(s.foco ?? "") + "</span>" : "") +
+    "<div class='sem-trilho'>" + p.semanas.map((x) => "<i class='r-" + x.rotulo + (x.n === n ? " atual" : "") + (x.n < n ? " passou" : "") + "' title='Semana " + x.n + ": " + ROT_CAL[x.rotulo] + "'></i>").join("") + "</div>" +
+    (prox.length ? "<div class='prox'>" + prox.map((x) => "<div><span>Semana " + x.n + "</span><b>" + (x.descarga ? "Regenerativa" : ROT_CAL[x.rotulo]) + "</b><em>" + escapar(x.fase) + "</em></div>").join("") + "</div>" : "") +
+    "</div>";
+}
+function desenharMesCal() {
+  const a = cal.mes, ano = a.getFullYear(), mes = a.getMonth();
+  const primeiro = new Date(ano, mes, 1, 12), dias = new Date(ano, mes + 1, 0, 12).getDate();
+  const offset = (primeiro.getDay() + 6) % 7; // semana começa na segunda
+  const hoje = hojeISO();
+  let grade = ["S", "T", "Q", "Q", "S", "S", "D"].map((d) => "<span class='dh'>" + d + "</span>").join("");
+  for (let i = 0; i < offset; i++) grade += "<span></span>";
+  for (let d = 1; d <= dias; d++) {
+    const iso = ano + "-" + String(mes + 1).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    const itens = cal.dias[iso] ?? [];
+    const pse = Math.max(0, ...itens.map((x) => x.pse || 0));
+    const rot = itens.length ? rotuloDia(pse) || "leve" : null;
+    grade += "<button class='dia" + (iso === hoje ? " hoje" : "") + (rot ? " r-" + rot : "") + "' data-dia='" + iso + "'" + (itens.length ? "" : " disabled") + ">" +
+      d + (itens.length ? "<i></i>" : "") + "</button>";
+  }
+  const nomeMes = primeiro.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const nome = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+  $("#cal-mes").innerHTML = "<div class='ck-bloco'><div class='cal-topo'><button data-mes='-1' aria-label='Mês anterior'>‹</button><b>" + nome + "</b><button data-mes='1' aria-label='Próximo mês'>›</button></div>" +
+    "<div class='cal-grade'>" + grade + "</div>" +
+    "<div class='cal-leg'><span><i class='r-leve'></i>Leve</span><span><i class='r-moderada'></i>Moderada</span><span><i class='r-alta'></i>Alta</span></div>" +
+    "<div id='cal-dia'></div></div>";
+  $$("[data-mes]").forEach((b) => b.addEventListener("click", async () => {
+    cal.mes = new Date(ano, mes + +b.dataset.mes, 1, 12);
+    $("#cal-mes").style.opacity = ".5";
+    await carregarMesCal();
+    $("#cal-mes").style.opacity = "";
+    desenharMesCal();
+  }));
+  $$("[data-dia]").forEach((b) => b.addEventListener("click", () => {
+    $$(".dia.sel").forEach((x) => x.classList.remove("sel")); b.classList.add("sel");
+    const itens = cal.dias[b.dataset.dia] ?? [];
+    $("#cal-dia").innerHTML = "<div class='cal-det'><b>" + new Date(b.dataset.dia + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }) + "</b>" +
+      itens.map((x) => "<div>" + escapar(x.nome) + " · " + (x.min ? x.min + " min · " : "") + "esforço " + rotuloPSE(x.pse) + "</div>").join("") + "</div>";
+  }));
 }
