@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=11">
+<link rel="stylesheet" href="./estilo.css?v=12">
 </head>
 <body>
 
@@ -131,6 +131,14 @@
             <span class="selo">Vídeo</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M22 7l-5 4 5 4zM9.5 9v6M6.5 12h6"/></svg>
             <b>Novo exercício</b></button>
+        </div>
+
+        <div class="sechd"><h2>Prontidão de hoje</h2><span class="mini" id="pront-sub">—</span></div>
+        <div class="card pad0 rolagem">
+          <table>
+            <thead><tr><th>Aluno</th><th>Prontidão (TQR)</th><th>Sono</th><th>Dor</th><th>Últimos 7 dias</th><th></th></tr></thead>
+            <tbody id="tb-prontidao"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+          </table>
         </div>
 
         <div class="sechd"><h2>Precisa da sua atenção</h2><span class="mini" id="alertas-sub">—</span></div>
@@ -402,6 +410,12 @@
       <div id="cal-mes"><div class="carregando">Carregando…</div></div>
     </section>
 
+    <!-- MINHA PROGRESSÃO -->
+    <section class="tela-aluno" data-tela="progresso">
+      <div class="ola-bloco"><h1>Minha progressão</h1><p>Como suas cargas vêm evoluindo em cada exercício.</p></div>
+      <div id="prog-corpo"><div class="carregando">Carregando…</div></div>
+    </section>
+
     <!-- HISTÓRICO -->
     <section class="tela-aluno" data-tela="historico">
       <div class="ola-bloco"><h1>Histórico</h1><p>Seus treinos concluídos</p></div>
@@ -463,6 +477,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=11"></script>
+<script type="module" src="./app.js?v=12"></script>
 </body>
 </html>
