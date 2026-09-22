@@ -426,7 +426,10 @@ function desenharLib() {
           "<div><b>" + escapar(ex.nome) + "</b><div class='m'>" + escapar(ex.grupo ?? "-") + " - " + escapar(ex.padrao ?? "-") + "</div></div>" +
           "<div class='plus'>" + (dentro ? "\u2713" : "+") + "</div></button>";
       }).join("")
-    : "<p class='vazio'>Nenhum exercício com esse filtro.</p>";
+    : "<p class='vazio'>Nenhum exercício com esse filtro.<br><button class='link-sutil' id='criar-da-busca'>Criar \"" +
+      escapar(estado.filtro.busca || "novo exercício") + "\"</button></p>";
+  $("#criar-da-busca")?.addEventListener("click", () =>
+    abrirExercicio({ nome: $("#in-busca-lib").value.trim(), aoCriar: (ex) => adicionarExercicio(ex.id) }));
 
   $$("[data-add]").forEach((b) =>
     b.addEventListener("click", () => adicionarExercicio(b.dataset.add)));
@@ -714,71 +717,267 @@ function desenharBiblioteca() {
   $("#grid-bib").innerHTML = lista.length
     ? lista.map((ex) =>
       "<div class='card-ex'><div class='thumb'>" +
-      (ex.video_url
-        ? "<video src='" + escapar(ex.video_url) + "' controls preload='metadata' playsinline></video>"
-        : "<div class='semvid'>sem vídeo</div>") +
+      (ex.video_url ? midiaVideo(ex.video_url) : "<div class='semvid'>sem vídeo</div>") +
+      (ehYoutube(ex.video_url) ? "<span class='tag-yt'>YouTube</span>" : "") +
       (ex.owner_id ? "<span class='tag-meu'>meu</span>" : "") +
       "</div><div class='info'><b>" + escapar(ex.nome) + "</b><div class='mini'>" +
       escapar(ex.grupo ?? "-") + " - " + escapar(ex.padrao ?? "-") + " - " + escapar(ex.categoria) +
       "</div></div><div class='acoes-ex'>" +
-      "<button class='btn ghost sm' data-video='" + ex.id + "'>" + (ex.video_url ? "Trocar vídeo" : "Enviar vídeo") + "</button>" +
+      (ex.owner_id
+        ? "<button class='btn ghost sm' data-editar='" + ex.id + "'>Editar" + (ex.video_url ? "" : " · pôr vídeo") + "</button>"
+        : "<button class='btn ghost sm' data-copiar='" + ex.id + "'>" + (ex.video_url ? "Usar meu vídeo" : "Adicionar vídeo") + "</button>") +
       (ex.owner_id ? "<button class='btn perigo sm' data-apagar='" + ex.id + "'>Apagar</button>" : "") +
       "</div></div>").join("")
     : "<p class='vazio'>Nenhum exercício com esse filtro.</p>";
 
   protegerVideos($("#grid-bib"));
-  $$("[data-video]").forEach((b) =>
-    b.addEventListener("click", () => enviarVideo(b.dataset.video)));
+  $$("[data-editar]").forEach((b) =>
+    b.addEventListener("click", () => abrirExercicio({ id: b.dataset.editar })));
+  $$("[data-copiar]").forEach((b) =>
+    b.addEventListener("click", () => abrirExercicio({ base: b.dataset.copiar })));
   $$("[data-apagar]").forEach((b) =>
     b.addEventListener("click", () => apagarExercicio(b.dataset.apagar)));
 }
 
-$("#btn-novo-ex").addEventListener("click", () => {
-  abrirModal(
-    "<h3>Novo exercício</h3><p class='desc'>Fica só na sua biblioteca — nenhum outro treinador vê.</p>" +
-    "<form id='form-ex'><label class='campo'><span>Nome *</span><input id='e-nome' required></label>" +
-    "<div class='linha'><label class='campo'><span>Grupo muscular</span><select id='e-grupo'>" +
-    GRUPOS.filter((g) => g !== "Todos").map((g) => "<option>" + g + "</option>").join("") +
-    "</select></label><label class='campo'><span>Padrão de movimento</span><select id='e-padrao'>" +
-    PADROES.filter((p) => p !== "Todos").map((p) => "<option>" + p + "</option>").join("") +
-    "</select></label></div>" +
-    "<label class='campo'><span>Tipo</span><select id='e-categoria'>" +
-    "<option value='forca'>Força (carga × repetições)</option>" +
-    "<option value='tempo'>Tempo / cardio (duração)</option></select></label>" +
-    "<label class='campo'><span>Observação técnica</span><textarea id='e-obs' rows='2' placeholder='Pontos de atenção na execução'></textarea></label>" +
-    "<div id='e-erro' class='erro' hidden></div>" +
-    "<div class='acoes'><button type='button' class='btn ghost' id='e-cancelar'>Cancelar</button>" +
-    "<button type='submit' class='btn' id='e-salvar'>Criar exercício</button></div></form>");
-  $("#e-cancelar").addEventListener("click", fecharModal);
-  $("#form-ex").addEventListener("submit", criarExercicio);
-});
+/* =========================================================
+   EXERCÍCIO: criar / editar, com vídeo do YouTube ou do aparelho
+   No banco fica só o endereço: link canônico do YouTube ou
+   o endereço público do arquivo no Storage.
+   ========================================================= */
+function idYoutube(texto) {
+  const t = String(texto ?? "").trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(t) ? t : "https://" + t); } catch { return null; }
+  const host = u.hostname.replace(/^(www\.|m\.|music\.)/, "");
+  let id = null;
+  if (host === "youtu.be") id = u.pathname.split("/")[1];
+  else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    id = u.searchParams.get("v");
+    const m = u.pathname.match(/^\/(shorts|embed|live|v)\/([^/?#]+)/);
+    if (!id && m) id = m[2];
+  }
+  return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}
+const urlYoutube = (id) => "https://www.youtube.com/watch?v=" + id;
+const ehYoutube = (url) => /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(url ?? "");
+const ehDoStorage = (url) => /\/storage\/v1\/object\/public\/exercise-videos\//.test(url ?? "");
 
-async function criarExercicio(e) {
+/* player único para biblioteca, execução do aluno e prévia */
+function midiaVideo(url, classe = "") {
+  if (!url) return "";
+  if (ehYoutube(url)) {
+    const id = url.slice(-11);
+    return "<div class='yt " + classe + "'><iframe src='https://www.youtube-nocookie.com/embed/" + id +
+      "?rel=0&modestbranding=1&playsinline=1' title='Vídeo do exercício' loading='lazy' " +
+      "allow='accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen' allowfullscreen></iframe></div>";
+  }
+  return "<video class='" + classe + "' src='" + escapar(url) + "' controls preload='metadata' playsinline></video>";
+}
+
+function validarArquivoVideo(arquivo) {
+  if (!arquivo) return "Escolha um vídeo.";
+  const mb = arquivo.size / 1048576;
+  if (mb > MAX_VIDEO_MB)
+    return "Esse vídeo tem " + mb.toFixed(0) + " MB e o limite é " + MAX_VIDEO_MB + " MB. " +
+      "Grave em 720p (já basta para demonstração), corte o trecho essencial — ou poste no YouTube e cole o link.";
+  const ext = (arquivo.name.split(".").pop() || "").toLowerCase();
+  const tipoOk = /^video\/(mp4|quicktime|webm)$/.test(arquivo.type) || (!arquivo.type && ["mp4", "mov", "webm"].includes(ext));
+  if (!tipoOk) return "Formato não aceito (" + (arquivo.type || ext || "desconhecido") + "). Use MP4, MOV ou WEBM — ou cole um link do YouTube.";
+  return null;
+}
+function tipoDoArquivo(arquivo) {
+  if (arquivo.type) return arquivo.type;
+  const ext = (arquivo.name.split(".").pop() || "").toLowerCase();
+  return ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : "video/mp4";
+}
+
+/* sobe o arquivo e devolve o endereço público (ou null se falhou) */
+async function subirVideo(arquivo, aoProgresso) {
+  const tipo = tipoDoArquivo(arquivo);
+  const ext = tipo === "video/quicktime" ? "mov" : tipo === "video/webm" ? "webm" : "mp4";
+  const caminho = estado.usuario.id + "/" + crypto.randomUUID() + "." + ext;
+  aoProgresso?.(15, "Enviando " + (arquivo.size / 1048576).toFixed(1) + " MB…");
+  const up = await comTratamento(
+    sb.storage.from("exercise-videos").upload(caminho, arquivo, { contentType: tipo, upsert: false }),
+    "Falha no envio do vídeo");
+  if (!up.ok) return null;
+  aoProgresso?.(75, "Registrando…");
+  const { data: pub } = sb.storage.from("exercise-videos").getPublicUrl(caminho);
+  return { url: pub.publicUrl, caminho };
+}
+function caminhoNoStorage(url) {
+  const m = String(url ?? "").match(/\/exercise-videos\/(.+)$/);
+  return m ? m[1] : null;
+}
+
+const ex_ = { modo: "nenhum", aoCriar: null };
+
+/*
+  abrirExercicio({ id })          editar um exercício meu
+  abrirExercicio({ base })        criar cópia minha de um exercício da biblioteca padrão
+  abrirExercicio({ aoCriar, nome }) criar novo (aoCriar recebe o exercício salvo)
+*/
+function abrirExercicio(op = {}) {
+  const ed = op.id ? estado.exercicios.find((e) => e.id === op.id) : null;
+  const base = op.base ? estado.exercicios.find((e) => e.id === op.base) : null;
+  const d = ed ?? base ?? { nome: op.nome ?? "", grupo: GRUPOS[1], padrao: PADROES[1], categoria: "forca", obs: "" };
+  ex_.id = ed?.id ?? null;
+  ex_.antigo = ed?.video_url ?? null;
+  ex_.aoCriar = op.aoCriar ?? null;
+  ex_.modo = ed?.video_url ? "manter" : "youtube";
+
+  const opt = (lista, atual) => lista.filter((g) => g !== "Todos")
+    .map((g) => "<option" + (g === atual ? " selected" : "") + ">" + escapar(g) + "</option>").join("");
+  const titulo = ed ? "Editar exercício" : base ? "Minha versão de " + escapar(base.nome) : "Novo exercício";
+  const desc = base ? "O exercício da biblioteca padrão não pode ser alterado — vou criar uma cópia sua, com o seu vídeo."
+    : "Fica só na sua biblioteca e dos seus alunos — nenhum outro treinador vê.";
+
+  abrirModal(
+    "<h3>" + titulo + "</h3><p class='desc'>" + desc + "</p>" +
+    "<form id='form-ex' novalidate><label class='campo'><span>Nome *</span><input id='e-nome' required maxlength='80' value='" + escapar(d.nome) + "' placeholder='Ex.: Agachamento búlgaro'></label>" +
+    "<div class='campo'><span>Vídeo demonstrativo</span>" +
+    "<div class='vid-modos'>" +
+    (ed?.video_url ? "<button type='button' data-vmodo='manter'>Manter atual</button>" : "") +
+    "<button type='button' data-vmodo='youtube'><svg viewBox='0 0 24 24'><path d='M23 7.2a3 3 0 00-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 001 7.2 31 31 0 00.6 12a31 31 0 00.4 4.8 3 3 0 002.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 002.1-2.1 31 31 0 00.4-4.8 31 31 0 00-.4-4.8zM9.7 15.1V8.9l5.8 3.1z' fill='currentColor'/></svg>Link do YouTube</button>" +
+    "<button type='button' data-vmodo='arquivo'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='6' y='2' width='12' height='20' rx='2.5'/><path d='M11 18h2'/></svg>Do celular</button>" +
+    "<button type='button' data-vmodo='nenhum'>" + (ed?.video_url ? "Remover" : "Sem vídeo") + "</button></div>" +
+
+    "<div class='vid-painel' data-vpainel='manter'>" + midiaVideo(ed?.video_url, "vid-prev") + "</div>" +
+    "<div class='vid-painel' data-vpainel='youtube'><input id='e-yt' inputmode='url' autocomplete='off' placeholder='Cole aqui o link (vídeo ou Shorts)'>" +
+    "<div class='mini vid-dica'>No YouTube: Compartilhar → Copiar link. Vídeos \"não listados\" também funcionam.</div><div id='e-yt-prev'></div></div>" +
+    "<div class='vid-painel' data-vpainel='arquivo'><label class='soltar'><input type='file' id='e-arquivo' accept='video/mp4,video/quicktime,video/webm,video/*'>" +
+    "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 16V4M7 9l5-5 5 5'/><path d='M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3'/></svg>" +
+    "<b id='e-arq-nome'>Escolher ou gravar vídeo</b><span>MP4, MOV ou WEBM · até " + MAX_VIDEO_MB + " MB</span></label><div id='e-arq-prev'></div></div>" +
+    "<div class='vid-painel' data-vpainel='nenhum'><div class='mini'>" + (ed?.video_url ? "O vídeo atual será removido ao salvar." : "Dá para adicionar depois, em Biblioteca → Editar.") + "</div></div>" +
+    "</div>" +
+
+    "<div class='linha'><label class='campo'><span>Grupo muscular</span><select id='e-grupo'>" + opt(GRUPOS, d.grupo) + "</select></label>" +
+    "<label class='campo'><span>Padrão de movimento</span><select id='e-padrao'>" + opt(PADROES, d.padrao) + "</select></label></div>" +
+    "<label class='campo'><span>Tipo</span><select id='e-categoria'>" +
+    "<option value='forca'" + (d.categoria === "forca" ? " selected" : "") + ">Força (carga × repetições)</option>" +
+    "<option value='tempo'" + (d.categoria === "tempo" ? " selected" : "") + ">Tempo / cardio (duração)</option></select></label>" +
+    "<label class='campo'><span>Observação técnica</span><textarea id='e-obs' rows='2' maxlength='500' placeholder='Pontos de atenção na execução'>" + escapar(d.obs ?? "") + "</textarea></label>" +
+
+    "<div id='e-erro' class='erro' hidden></div>" +
+    "<div id='e-prog' hidden><div class='mini' id='e-status'>Salvando…</div><div class='barra-prog'><i id='e-barra'></i></div></div>" +
+    "<div class='acoes'><button type='button' class='btn ghost' id='e-cancelar'>Cancelar</button>" +
+    "<button type='submit' class='btn' id='e-salvar'>" + (ed ? "Salvar alterações" : "Criar exercício") + "</button></div></form>");
+
+  const mostrarModo = (m) => {
+    ex_.modo = m;
+    $$("[data-vmodo]").forEach((b) => b.classList.toggle("on", b.dataset.vmodo === m));
+    $$("[data-vpainel]").forEach((p) => (p.hidden = p.dataset.vpainel !== m));
+    $("#e-erro").hidden = true;
+  };
+  $$("[data-vmodo]").forEach((b) => b.addEventListener("click", () => mostrarModo(b.dataset.vmodo)));
+  mostrarModo(ex_.modo);
+
+  $("#e-yt").addEventListener("input", (e) => {
+    const id = idYoutube(e.target.value);
+    $("#e-yt-prev").innerHTML = !e.target.value.trim() ? ""
+      : id ? midiaVideo(urlYoutube(id), "vid-prev")
+      : "<div class='mini aviso-yt'>Não reconheci esse link. Use o endereço do vídeo (youtube.com/watch?v=… , youtu.be/… ou youtube.com/shorts/…).</div>";
+  });
+  $("#e-arquivo").addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    const prev = $("#e-arq-prev");
+    if (prev.dataset.url) URL.revokeObjectURL(prev.dataset.url);
+    prev.innerHTML = ""; delete prev.dataset.url;
+    if (!f) return;
+    $("#e-arq-nome").textContent = f.name + " · " + (f.size / 1048576).toFixed(1) + " MB";
+    const problema = validarArquivoVideo(f);
+    if (problema) { $("#e-erro").textContent = problema; $("#e-erro").hidden = false; return; }
+    $("#e-erro").hidden = true;
+    try {
+      const u = URL.createObjectURL(f);
+      prev.dataset.url = u;
+      prev.innerHTML = "<video class='vid-prev' src='" + u + "' controls muted playsinline preload='metadata'></video>";
+    } catch { /* prévia é opcional */ }
+  });
+  $("#e-cancelar").addEventListener("click", fecharModal);
+  $("#form-ex").addEventListener("submit", salvarExercicio);
+}
+
+async function salvarExercicio(e) {
   e.preventDefault();
+  const cErro = $("#e-erro");
+  const falha = (m) => { cErro.innerHTML = m; cErro.hidden = false; };
+  cErro.hidden = true;
+
+  const nome = $("#e-nome").value.trim();
+  if (!nome) { $("#e-nome").focus(); return falha("Dê um nome ao exercício."); }
+
+  let urlNova = ex_.modo === "manter" ? ex_.antigo : null;
+  let arquivo = null;
+  if (ex_.modo === "youtube") {
+    const bruto = $("#e-yt").value.trim();
+    if (bruto) {
+      const id = idYoutube(bruto);
+      if (!id) return falha("Esse link não parece ser de um vídeo do YouTube.");
+      urlNova = urlYoutube(id);
+    }
+  }
+  if (ex_.modo === "arquivo") {
+    arquivo = $("#e-arquivo").files?.[0];
+    const problema = validarArquivoVideo(arquivo);
+    if (problema) return falha(problema);
+  }
+
   const btn = $("#e-salvar");
   btn.disabled = true;
-  btn.textContent = "Criando...";
+  const prog = (p, txt) => { $("#e-prog").hidden = false; $("#e-barra").style.width = p + "%"; $("#e-status").textContent = txt; };
+  prog(8, "Salvando…");
 
+  // 1) sobe o arquivo antes de gravar, para não deixar exercício com vídeo quebrado
+  let subido = null;
+  if (arquivo) {
+    subido = await subirVideo(arquivo, prog);
+    if (!subido) { btn.disabled = false; $("#e-prog").hidden = true; return falha("O vídeo não subiu. Confira a conexão e tente de novo — ou use um link do YouTube."); }
+    urlNova = subido.url;
+  }
+
+  const campos = {
+    nome, grupo: $("#e-grupo").value, padrao: $("#e-padrao").value,
+    categoria: $("#e-categoria").value, obs: $("#e-obs").value.trim() || null, video_url: urlNova,
+  };
   const r = await comTratamento(
-    sb.from("exercises").insert({
-      owner_id: estado.usuario.id,
-      nome: $("#e-nome").value.trim(),
-      grupo: $("#e-grupo").value,
-      padrao: $("#e-padrao").value,
-      categoria: $("#e-categoria").value,
-      obs: $("#e-obs").value.trim() || null,
-    }).select().single(),
-    "Não consegui criar o exercício");
+    ex_.id
+      ? sb.from("exercises").update(campos).eq("id", ex_.id).select().single()
+      : sb.from("exercises").insert({ owner_id: estado.usuario.id, ...campos }).select().single(),
+    ex_.id ? "Não consegui salvar o exercício" : "Não consegui criar o exercício");
 
-  btn.disabled = false;
-  btn.textContent = "Criar exercício";
-  if (!r.ok) return;
+  if (!r.ok || !r.data) {
+    if (subido) await sb.storage.from("exercise-videos").remove([subido.caminho]); // não deixa arquivo órfão
+    btn.disabled = false; $("#e-prog").hidden = true;
+    return falha("Nada foi salvo. Tente de novo.");
+  }
+  // 2) relê e confere
+  const conf = await sb.from("exercises").select("id,nome,video_url").eq("id", r.data.id).maybeSingle();
+  if (!conf.data || conf.data.video_url !== urlNova) {
+    btn.disabled = false; $("#e-prog").hidden = true;
+    return falha("Salvei, mas a conferência não bateu. Recarregue a biblioteca para verificar.");
+  }
+  // 3) vídeo antigo que saiu do Storage não fica ocupando espaço
+  if (ex_.antigo && ex_.antigo !== urlNova && ehDoStorage(ex_.antigo)) {
+    const c = caminhoNoStorage(ex_.antigo);
+    if (c) sb.storage.from("exercise-videos").remove([c]).catch(() => {});
+  }
 
+  prog(100, "Pronto");
+  const aoCriar = ex_.aoCriar, editou = !!ex_.id;
   fecharModal();
   await carregarExercicios();
   desenharBiblioteca();
-  bom(r.data.nome + " criado");
+  carregarResumo();
+  bom(r.data.nome + (editou ? " atualizado" : " criado") + (urlNova ? " com vídeo" : ""));
+  if (aoCriar && !editou) aoCriar(r.data);
 }
+
+$("#btn-novo-ex").addEventListener("click", () => abrirExercicio());
+$("#atalho-novo-ex").addEventListener("click", () => abrirExercicio());
+$("#btn-criar-ex-lib").addEventListener("click", () =>
+  abrirExercicio({ nome: $("#in-busca-lib").value.trim(), aoCriar: (ex) => adicionarExercicio(ex.id) }));
 
 async function apagarExercicio(id) {
   const ex = estado.exercicios.find((e) => e.id === id);
@@ -789,92 +988,17 @@ async function apagarExercicio(id) {
     "<button class='btn perigo' id='x-sim'>Apagar</button></div>");
   $("#x-nao").addEventListener("click", fecharModal);
   $("#x-sim").addEventListener("click", async () => {
-    const r = await comTratamento(
-      sb.from("exercises").delete().eq("id", id),
-      "Não consegui apagar");
+    const r = await comTratamento(sb.from("exercises").delete().eq("id", id), "Não consegui apagar");
     fecharModal();
     if (!r.ok) return;
+    if (ehDoStorage(ex?.video_url)) {
+      const c = caminhoNoStorage(ex.video_url);
+      if (c) sb.storage.from("exercise-videos").remove([c]).catch(() => {});
+    }
     await carregarExercicios();
     desenharBiblioteca();
     bom("Exercício apagado");
   });
-}
-
-function enviarVideo(exId) {
-  const ex = estado.exercicios.find((e) => e.id === exId);
-  abrirModal(
-    "<h3>Video de " + escapar(ex?.nome ?? "") + "</h3>" +
-    "<p class='desc'>Até " + MAX_VIDEO_MB + " MB, em MP4, MOV ou WEBM. O vídeo vai para o Storage — no banco fica só o endereço dele.</p>" +
-    "<label class='campo'><span>Arquivo</span><input type='file' id='v-arquivo' accept='video/mp4,video/quicktime,video/webm'></label>" +
-    "<div id='v-erro' class='erro' hidden></div>" +
-    "<div id='v-prog' hidden><div class='mini' id='v-status'>Enviando...</div><div class='barra-prog'><i id='v-barra'></i></div></div>" +
-    "<div class='acoes'><button class='btn ghost' id='v-cancelar'>Cancelar</button>" +
-    "<button class='btn' id='v-enviar'>Enviar vídeo</button></div>");
-
-  $("#v-cancelar").addEventListener("click", fecharModal);
-  $("#v-enviar").addEventListener("click", () => executarUpload(exId));
-}
-
-async function executarUpload(exId) {
-  const arquivo = $("#v-arquivo").files?.[0];
-  const cErro = $("#v-erro");
-  const btn = $("#v-enviar");
-  cErro.hidden = true;
-
-  if (!arquivo) { cErro.textContent = "Escolha um arquivo."; cErro.hidden = false; return; }
-
-  const mb = arquivo.size / 1048576;
-  if (mb > MAX_VIDEO_MB) {
-    cErro.innerHTML = "Esse vídeo tem " + mb.toFixed(0) + " MB e o limite e " + MAX_VIDEO_MB + " MB.<br>" +
-      "Grave em resolução menor (720p já basta para demonstração) ou corte o trecho essencial.";
-    cErro.hidden = false;
-    return;
-  }
-  if (!/^video\/(mp4|quicktime|webm)$/.test(arquivo.type)) {
-    cErro.textContent = "Formato não aceito. Use MP4, MOV ou WEBM.";
-    cErro.hidden = false;
-    return;
-  }
-
-  btn.disabled = true;
-  $("#v-prog").hidden = false;
-  $("#v-barra").style.width = "15%";
-  $("#v-status").textContent = "Enviando " + mb.toFixed(1) + " MB...";
-
-  const ext = (arquivo.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
-  const caminho = estado.usuario.id + "/" + crypto.randomUUID() + "." + ext;
-
-  const up = await comTratamento(
-    sb.storage.from("exercise-videos").upload(caminho, arquivo, {
-      contentType: arquivo.type, upsert: false,
-    }),
-    "Falha no envio do vídeo");
-
-  if (!up.ok) { btn.disabled = false; $("#v-prog").hidden = true; return; }
-
-  $("#v-barra").style.width = "70%";
-  $("#v-status").textContent = "Registrando...";
-
-  const { data: pub } = sb.storage.from("exercise-videos").getPublicUrl(caminho);
-  const url = pub.publicUrl;
-
-  const r = await comTratamento(
-    sb.from("exercises").update({ video_url: url }).eq("id", exId).select().single(),
-    "O vídeo subiu, mas não consegui ligá-lo ao exercício");
-
-  if (!r.ok) {
-    await sb.storage.from("exercise-videos").remove([caminho]);
-    btn.disabled = false;
-    $("#v-prog").hidden = true;
-    return;
-  }
-
-  $("#v-barra").style.width = "100%";
-  fecharModal();
-  await carregarExercicios();
-  desenharBiblioteca();
-  await carregarResumo();
-  bom("Vídeo publicado");
 }
 
 estadoRede();
@@ -1149,7 +1273,7 @@ function desenharExecucao(abrirIndice) {
     const ult = al.ultimas[it.exercise_id];
 
     const midia = ex.video_url
-      ? "<video class='video-ex' src='" + escapar(ex.video_url) + "' controls preload='metadata' playsinline></video>"
+      ? midiaVideo(ex.video_url, "video-ex")
       : "<div class='sem-video-ex'>sem vídeo demonstrativo</div>";
 
     const obs = ex.obs ? "<div class='obs-ex'>" + escapar(ex.obs) + "</div>" : "";
