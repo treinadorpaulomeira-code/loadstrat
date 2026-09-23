@@ -3147,59 +3147,105 @@ function desenharProgresso() {
    a densidade do exercício = volume ÷ tempo de recuperação (kg/s),
    contando só os intervalos entre séries do MESMO exercício.
    ========================================================= */
-const ss = { aluno: null, sessaoId: null, treino: null, nome: "", itens: [], inicio: null, relogio: null, salvando: 0 };
+/* A sessão pode ter mais de um aluno (dupla ou trio treinando junto). Cada um
+   tem a SUA sessão no banco, com o treino dele; a tela mostra uma aba por aluno.
+   ssDados.lista guarda uma sessão por aluno e ssDados.i diz qual está na tela.
+   O ss abaixo é um atalho: ler ou escrever ss.itens, ss.aluno, ss.sessaoId…
+   sempre cai na sessão da aba aberta, então o resto do módulo não muda. */
+const ssDados = { lista: [], i: 0, relogio: null, salvando: 0 };
+const SS_DO_ALUNO = ["aluno", "sessaoId", "treino", "nome", "itens", "inicio"];
+const ss = new Proxy(ssDados, {
+  get: (t, k) => (SS_DO_ALUNO.includes(k) ? t.lista[t.i]?.[k] : t[k]),
+  set: (t, k, v) => {
+    if (SS_DO_ALUNO.includes(k)) { if (t.lista[t.i]) t.lista[t.i][k] = v; } else t[k] = v;
+    return true;
+  },
+});
+const sessaoNaTela = () => ssDados.lista[ssDados.i] ?? null;
 
 const agoraISO = () => new Date().toISOString();
 const segundosEntre = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 1000));
 
-/* ---------- começar ---------- */
+/* ---------- começar ----------
+   Caminho: escolher quem treina → para cada um, escolher o treino (ou treino
+   livre) → abre uma sessão por aluno e entra na tela. Com um aluno só, o
+   primeiro passo não aparece. */
 async function abrirSessao(alunoId) {
   const a = estado.alunos.find((x) => x.id === alunoId) ?? estado.perfilAberto;
   if (!a) return erro("Escolha um aluno primeiro");
-  abrirModal("<h3>Treinar com " + escapar(a.nome.split(" ")[0]) + "</h3>" +
-    "<p class='desc'>Você registra as séries enquanto ele treina. Entra no histórico dele igual a um treino feito pelo app.</p>" +
-    "<div id='ss-op' class='carregando'>Buscando os treinos dele…</div>");
-  const [aberta, treinos] = await Promise.all([
-    sb.from("session_logs").select("id,data,workout_id,nome_livre,criado_em").eq("aluno_id", a.id).eq("finalizada", false)
-      .order("criado_em", { ascending: false }).limit(1),
-    sb.from("workouts").select("id,nome,data,estrutura,semanas,sessoes_por_semana,status").eq("aluno_id", a.id)
-      .eq("status", "publicado").order("data", { ascending: false }).limit(12),
-  ]);
-  const lista = (treinos.data ?? []).filter((t) => Array.isArray(t.estrutura) && t.estrutura.length);
-  const emAberto = aberta.data?.[0] ?? null;
-  if (!$("#ss-op")) return; // o modal foi fechado (ou reaberto) enquanto buscávamos
-  $("#ss-op").outerHTML =
-    (emAberto ? "<button class='ss-op destaque' data-retomar='" + emAberto.id + "'><b>Continuar a sessão em aberto</b>" +
-      "<span>começou " + new Date(emAberto.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span></button>" : "") +
-    lista.map((t) => "<button class='ss-op' data-treino='" + t.id + "'><b>" + escapar(t.nome) + "</b><span>" +
-      t.estrutura.length + " exercícios · publicado em " + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR") + "</span></button>").join("") +
-    "<button class='ss-op livre' data-livre='1'><b>Treino livre</b><span>monte na hora, escolhendo os exercícios</span></button>" +
-    "<div class='acoes'><button class='btn ghost' id='ss-cancelar'>Cancelar</button></div>";
-  $("#ss-cancelar").addEventListener("click", fecharModal);
-  $$("[data-treino]").forEach((b) => b.addEventListener("click", () => iniciarSessao(a, lista.find((t) => t.id === b.dataset.treino))));
-  $$("[data-livre]").forEach((b) => b.addEventListener("click", () => iniciarSessao(a, null)));
-  $$("[data-retomar]").forEach((b) => b.addEventListener("click", () => retomarSessao(a, emAberto, lista)));
+  return montarSessoes([a]);
 }
 
-async function iniciarSessao(aluno, treino) {
+async function montarSessoes(alunos) {
+  const escolhas = [];
+  for (let k = 0; k < alunos.length; k++) {
+    const esc = await escolherTreino(alunos[k], k, alunos.length);
+    if (!esc) return;                       // cancelou: não abre nada
+    escolhas.push(esc);
+  }
+  abrirModal("<h3>" + (escolhas.length > 1 ? "Abrindo as sessões…" : "Abrindo a sessão…") + "</h3>" +
+    "<div class='carregando'>Um instante.</div>");
+  const abertas = [];
+  for (const e of escolhas) {
+    const s = e.retomar ? await carregarSessaoAberta(e.aluno, e.retomar, e.treinos)
+                        : await criarSessao(e.aluno, e.treino);
+    if (s) abertas.push(s);
+  }
+  if (!abertas.length) return fecharModal();
+  ssDados.lista = abertas;
+  ssDados.i = 0;
+  fecharModal();
+  entrarNaSessao();
+}
+
+/* mostra os treinos daquele aluno e devolve a escolha (ou null se cancelou) */
+function escolherTreino(a, k, total) {
+  return new Promise(async (resolve) => {
+    abrirModal((total > 1 ? "<div class='ss-passo'>Aluno " + (k + 1) + " de " + total + "</div>" : "") +
+      "<h3>Treino de " + escapar(a.nome.split(" ")[0]) + "</h3>" +
+      "<p class='desc'>Você registra as séries enquanto ele treina. Entra no histórico dele igual a um treino feito pelo app.</p>" +
+      "<div id='ss-op' class='carregando'>Buscando os treinos dele…</div>");
+    const [aberta, treinos] = await Promise.all([
+      sb.from("session_logs").select("id,data,workout_id,nome_livre,criado_em").eq("aluno_id", a.id).eq("finalizada", false)
+        .order("criado_em", { ascending: false }).limit(1),
+      sb.from("workouts").select("id,nome,data,estrutura,semanas,sessoes_por_semana,status").eq("aluno_id", a.id)
+        .eq("status", "publicado").order("data", { ascending: false }).limit(12),
+    ]);
+    const lista = (treinos.data ?? []).filter((t) => Array.isArray(t.estrutura) && t.estrutura.length);
+    const emAberto = aberta.data?.[0] ?? null;
+    if (!$("#ss-op")) return resolve(null); // o modal foi fechado enquanto buscávamos
+    $("#ss-op").outerHTML =
+      (emAberto ? "<button class='ss-op destaque' data-retomar='" + emAberto.id + "'><b>Continuar a sessão em aberto</b>" +
+        "<span>começou " + new Date(emAberto.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span></button>" : "") +
+      lista.map((t) => "<button class='ss-op' data-treino='" + t.id + "'><b>" + escapar(t.nome) + "</b><span>" +
+        t.estrutura.length + " exercícios · publicado em " + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR") + "</span></button>").join("") +
+      "<button class='ss-op livre' data-livre='1'><b>Treino livre</b><span>monte na hora, escolhendo os exercícios</span></button>" +
+      "<div class='acoes'><button class='btn ghost' id='ss-cancelar'>Cancelar</button></div>";
+    $("#ss-cancelar").addEventListener("click", () => { fecharModal(); resolve(null); });
+    $$("[data-treino]").forEach((b) => b.addEventListener("click", () =>
+      resolve({ aluno: a, treino: lista.find((t) => t.id === b.dataset.treino) })));
+    $$("[data-livre]").forEach((b) => b.addEventListener("click", () => resolve({ aluno: a, treino: null })));
+    $$("[data-retomar]").forEach((b) => b.addEventListener("click", () => resolve({ aluno: a, retomar: emAberto, treinos: lista })));
+  });
+}
+
+const itensDoTreino = (treino, semana) => (treino?.estrutura ?? []).map((ex) => ({
+  exercise_id: ex.exercise_id, nome: ex.nome, registro: registroDe(ex),
+  descanso_s: parseInt(ex.descanso_s) || 90,
+  series: seriesDaSemana(ex, semana).map((s) => novaSerieViva(s)),
+}));
+
+async function criarSessao(aluno, treino) {
   const semana = treino ? await semanaDoTreino(aluno.id, treino) : 1;
   const r = await comTratamento(
     sb.from("session_logs").insert({
       aluno_id: aluno.id, workout_id: treino?.id ?? null, registrada_por: estado.usuario.id,
       semana, nome_livre: treino ? null : "Treino livre",
     }).select().single(),
-    "Não consegui abrir a sessão");
-  if (!r.ok) return;
-  ss.aluno = aluno; ss.sessaoId = r.data.id; ss.treino = treino ?? null;
-  ss.nome = treino?.nome ?? "Treino livre";
-  ss.inicio = new Date(r.data.criado_em ?? Date.now());
-  ss.itens = (treino?.estrutura ?? []).map((ex) => ({
-    exercise_id: ex.exercise_id, nome: ex.nome, registro: registroDe(ex),
-    descanso_s: parseInt(ex.descanso_s) || 90,
-    series: seriesDaSemana(ex, semana).map((s) => novaSerieViva(s)),
-  }));
-  fecharModal();
-  entrarNaSessao();
+    "Não consegui abrir a sessão de " + aluno.nome.split(" ")[0]);
+  if (!r.ok) return null;
+  return { aluno, sessaoId: r.data.id, treino: treino ?? null, nome: treino?.nome ?? "Treino livre",
+    inicio: new Date(r.data.criado_em ?? Date.now()), itens: itensDoTreino(treino, semana) };
 }
 async function semanaDoTreino(alunoId, treino) {
   const n = await sb.from("session_logs").select("id", { count: "exact", head: true })
@@ -3214,51 +3260,67 @@ const novaSerieViva = (alvo = {}) => ({
   iniciada_em: null, concluida_em: null, concluida: false,
 });
 
-async function retomarSessao(aluno, sessao, treinos) {
+async function carregarSessaoAberta(aluno, sessao, treinos) {
   const treino = treinos.find((t) => t.id === sessao.workout_id) ?? null;
   const feitos = await sb.from("workout_sets").select("*").eq("session_id", sessao.id).order("serie_num");
-  ss.aluno = aluno; ss.sessaoId = sessao.id; ss.treino = treino;
-  ss.nome = treino?.nome ?? sessao.nome_livre ?? "Treino livre";
-  ss.inicio = new Date(sessao.criado_em ?? Date.now());
   const semana = treino ? await semanaDoTreino(aluno.id, treino) : 1;
-  ss.itens = (treino?.estrutura ?? []).map((ex) => ({
-    exercise_id: ex.exercise_id, nome: ex.nome, registro: registroDe(ex),
-    descanso_s: parseInt(ex.descanso_s) || 90,
-    series: seriesDaSemana(ex, semana).map((s) => novaSerieViva(s)),
-  }));
+  const itens = itensDoTreino(treino, semana);
   // exercícios que só existem no que já foi registrado (treino livre ou acrescentados)
   (feitos.data ?? []).forEach((f) => {
-    let item = ss.itens.find((i) => i.exercise_id === f.exercise_id);
+    let item = itens.find((i) => i.exercise_id === f.exercise_id);
     if (!item) {
       const ex = estado.exercicios.find((e) => e.id === f.exercise_id);
       item = { exercise_id: f.exercise_id, nome: ex?.nome ?? "Exercício", registro: f.tempo_s != null ? "carga_tempo" : "carga_reps", descanso_s: 90, series: [] };
-      ss.itens.push(item);
+      itens.push(item);
     }
     while (item.series.length < f.serie_num) item.series.push(novaSerieViva());
     const s = item.series[f.serie_num - 1];
     s.carga = f.carga_kg ?? ""; s.reps = f.reps ?? ""; s.tempo = f.tempo_s != null ? fmtTempo(f.tempo_s) : "";
     s.dist = f.dist_m ?? ""; s.iniciada_em = f.iniciada_em; s.concluida_em = f.concluida_em; s.concluida = !!f.concluida;
   });
-  fecharModal();
-  entrarNaSessao();
+  return { aluno, sessaoId: sessao.id, treino, nome: treino?.nome ?? sessao.nome_livre ?? "Treino livre",
+    inicio: new Date(sessao.criado_em ?? Date.now()), itens };
 }
 
 function entrarNaSessao() {
   irPara("sessao");
-  $("#ss-aluno").textContent = ss.aluno.nome;
-  $("#ss-sub").textContent = ss.nome + " · sessão ao vivo";
-  clearInterval(ss.relogio);
+  clearInterval(ssDados.relogio);
   const passo = () => {
-    const seg = Math.max(0, Math.floor((Date.now() - ss.inicio.getTime()) / 1000));
+    const seg = ss.inicio ? Math.max(0, Math.floor((Date.now() - ss.inicio.getTime()) / 1000)) : 0;
     $("#ss-tempo").textContent = String(Math.floor(seg / 60)).padStart(2, "0") + ":" + String(seg % 60).padStart(2, "0");
   };
   passo();
-  ss.relogio = setInterval(passo, 1000);
+  ssDados.relogio = setInterval(passo, 1000);
   desenharSessao();
+}
+
+/* uma aba por aluno, com o quanto já foi feito; some quando é um aluno só */
+function desenharAbas() {
+  const alvo = $("#ss-abas");
+  if (!alvo) return;
+  if (ssDados.lista.length < 2) { alvo.hidden = true; alvo.innerHTML = ""; return; }
+  alvo.hidden = false;
+  alvo.innerHTML = ssDados.lista.map((s, k) => {
+    const feitas = s.itens.reduce((n, it) => n + it.series.filter((x) => x.concluida).length, 0);
+    const total = s.itens.reduce((n, it) => n + it.series.length, 0);
+    return "<button class='ss-aba" + (k === ssDados.i ? " on" : "") + "' data-ssaba='" + k + "'>" +
+      "<span class='av'>" + escapar(iniciais(s.aluno.nome)) + "</span><b>" + escapar(s.aluno.nome.split(" ")[0]) +
+      "</b><span>" + feitas + "/" + total + "</span></button>";
+  }).join("");
+  $$("[data-ssaba]").forEach((b) => b.addEventListener("click", () => {
+    ssDados.i = +b.dataset.ssaba;   // o cronômetro do descanso continua correndo
+    desenharSessao();
+  }));
 }
 
 /* ---------- a tela ---------- */
 function desenharSessao() {
+  const atual = sessaoNaTela();
+  if (!atual) return;
+  $("#ss-aluno").textContent = atual.aluno.nome;
+  $("#ss-sub").textContent = atual.nome + " · sessão ao vivo" +
+    (ssDados.lista.length > 1 ? " · " + ssDados.lista.length + " alunos juntos" : "");
+  desenharAbas();
   const alvo = $("#ss-lista");
   if (!ss.itens.length) {
     alvo.innerHTML = "<div class='empty'><p>Nenhum exercício ainda. Toque em <b>+ Exercício</b> para começar.</p></div>";
@@ -3431,7 +3493,7 @@ function resumoSessao() {
     "<div class='stat'><div class='v'>" + m.series + "</div><div class='l'>Séries feitas</div>" +
       "<div class='d mini'>" + (m.reps ? m.reps + " repetições" : "—") + "</div></div>" +
     "<div class='stat'><div class='v'>" + fmt(m.avl) + "</div><div class='l'>Volume (kg)</div>" +
-      "<div class='d mini'>" + (m.vi ? "índice de volume " + fmt(m.vi, 1) : "peso do aluno não cadastrado") + "</div></div>" +
+      "<div class='d mini'>" + (m.vi != null ? "índice de volume " + fmt(m.vi, 1) : "peso do aluno não cadastrado") + "</div></div>" +
     "<div class='stat'><div class='v'>" + (m.ed ? fmt(m.ed * 60) : "—") + "</div><div class='l'>Densidade (kg/min)</div>" +
       "<div class='d mini'>" + (m.ed ? fmt(m.ed, 2) + " kg/s · " + m.recMedidos + " intervalos medidos" : "use ▶ e ✓ para medir o descanso") + "</div></div>" +
     "<div class='stat'><div class='v'>" + fmtTempo(m.recuperacao) + "</div><div class='l'>Tempo de recuperação</div>" +
@@ -3443,11 +3505,14 @@ $("#ss-fim").addEventListener("click", () => {
   if (!ss.sessaoId) return;
   const m = metricasSessao();
   const min = Math.max(1, Math.round(m.total / 60));
-  abrirModal("<h3>Finalizar a sessão</h3><p class='desc'>Pergunte ao aluno o esforço da sessão (Borg 1–10).</p>" +
+  const quem = ss.aluno.nome.split(" ")[0];
+  abrirModal("<h3>Finalizar a sessão de " + escapar(quem) + "</h3>" +
+    "<p class='desc'>Pergunte ao aluno o esforço da sessão (Borg 1–10)." +
+    (ssDados.lista.length > 1 ? " As sessões dos outros continuam abertas." : "") + "</p>" +
     "<div class='ss-fim-resumo'>" +
       "<div><span>Séries</span><b>" + m.series + "</b></div>" +
       "<div><span>Volume</span><b>" + fmt(m.avl) + " kg</b></div>" +
-      (m.vi ? "<div><span>Índice de volume</span><b>" + fmt(m.vi, 1) + "</b></div>" : "") +
+      (m.vi != null ? "<div><span>Índice de volume</span><b>" + fmt(m.vi, 1) + "</b></div>" : "") +
       "<div><span>Densidade</span><b>" + (m.ed ? fmt(m.ed * 60) + " kg/min" : "—") + "</b></div>" +
       "<div><span>Recuperação</span><b>" + fmtTempo(m.recuperacao) + "</b></div>" +
       "<div><span>Duração</span><b>" + fmtTempo(m.total) + "</b></div></div>" +
@@ -3482,9 +3547,12 @@ $("#ss-fim").addEventListener("click", () => {
     encerrarSessao();
     fecharModal();
     bom("Sessão registrada para " + aluno.nome.split(" ")[0]);
-    abrirPerfil(aluno.id);
+    if (ssDados.lista.length) { desenharSessao(); aviso("Ainda falta encerrar " + faltamTexto()); }
+    else abrirPerfil(aluno.id);
   });
 });
+const faltamTexto = () => ssDados.lista.map((s) => s.aluno.nome.split(" ")[0]).join(" e ");
+
 async function apagarSessao() {
   const id = ss.sessaoId;
   if (!id) return;
@@ -3493,25 +3561,59 @@ async function apagarSessao() {
   if (!r.ok) return;
   encerrarSessao();
   fecharModal();
-  irPara("alunos");
+  if (ssDados.lista.length) desenharSessao(); else irPara("alunos");
   bom("Sessão apagada");
 }
+/* tira da tela a sessão do aluno que está aberto; os outros continuam */
 function encerrarSessao() {
-  clearInterval(ss.relogio);
   fecharTimer();
-  ss.sessaoId = null; ss.itens = []; ss.aluno = null; ss.treino = null;
+  ssDados.lista.splice(ssDados.i, 1);
+  if (ssDados.i >= ssDados.lista.length) ssDados.i = Math.max(0, ssDados.lista.length - 1);
+  if (!ssDados.lista.length) clearInterval(ssDados.relogio);
 }
 
 $("#pf-treinar").addEventListener("click", () => estado.perfilAberto && abrirSessao(estado.perfilAberto.id));
+
+/* atalho do painel: marca um ou vários alunos e começa a sessão de todos */
 $("#atalho-treinar").addEventListener("click", () => {
   if (!estado.alunos.length) return erro("Cadastre um aluno primeiro");
   if (estado.alunos.length === 1) return abrirSessao(estado.alunos[0].id);
-  abrirModal("<h3>Treinar agora</h3><p class='desc'>Com quem é a sessão?</p>" +
-    estado.alunos.map((a) => "<button class='ss-op' data-ssaluno='" + a.id + "'><b>" + escapar(a.nome) + "</b><span>" +
-      escapar([a.objetivo, a.esporte].filter(Boolean).join(" · ") || "—") + "</span></button>").join("") +
-    "<div class='acoes'><button class='btn ghost' id='ss-al-fechar'>Cancelar</button></div>");
+  const marcados = new Set();
+  abrirModal("<h3>Iniciar treino</h3>" +
+    "<p class='desc'>Marque quem vai treinar agora. Pode ser mais de um: cada aluno fica numa aba, com o treino dele.</p>" +
+    estado.alunos.map((a) => "<button class='ss-ck' data-ssaluno='" + a.id + "'><span class='caixa'>✓</span>" +
+      "<span class='quem'><b>" + escapar(a.nome) + "</b><small>" +
+      escapar([a.objetivo, a.esporte].filter(Boolean).join(" · ") || "—") + "</small></span></button>").join("") +
+    "<div class='acoes'><button class='btn ghost' id='ss-al-fechar'>Cancelar</button>" +
+    "<button class='btn' id='ss-al-ok' disabled>Continuar</button></div>");
+  const atualizar = () => {
+    $("#ss-al-ok").disabled = marcados.size === 0;
+    $("#ss-al-ok").textContent = marcados.size > 1 ? "Continuar (" + marcados.size + " alunos)" : "Continuar";
+  };
   $("#ss-al-fechar").addEventListener("click", fecharModal);
-  $$("[data-ssaluno]").forEach((b) => b.addEventListener("click", () => abrirSessao(b.dataset.ssaluno)));
+  $$("[data-ssaluno]").forEach((b) => b.addEventListener("click", () => {
+    const id = b.dataset.ssaluno;
+    if (marcados.has(id)) marcados.delete(id); else marcados.add(id);
+    b.classList.toggle("on", marcados.has(id));
+    atualizar();
+  }));
+  $("#ss-al-ok").addEventListener("click", () =>
+    montarSessoes(estado.alunos.filter((a) => marcados.has(a.id))));
+  atualizar();
+});
+
+/* quadro "Alunos ativos" do painel: abre a lista para ir direto ao perfil */
+$("#card-alunos").addEventListener("click", () => {
+  if (!estado.alunos.length) return aviso("Nenhum aluno cadastrado ainda.");
+  abrirModal("<h3>Meus alunos</h3><p class='desc'>Toque no nome para abrir o perfil, a carga e o histórico dele.</p>" +
+    estado.alunos.map((a) => "<button class='ss-op' data-alunoperfil='" + a.id + "'><b>" + escapar(a.nome) + "</b><span>" +
+      escapar([a.objetivo, a.esporte].filter(Boolean).join(" · ") || "—") + "</span></button>").join("") +
+    "<div class='acoes'><button class='btn ghost' id='al-fechar'>Fechar</button></div>");
+  $("#al-fechar").addEventListener("click", fecharModal);
+  $$("[data-alunoperfil]").forEach((b) => b.addEventListener("click", () => {
+    fecharModal();
+    abrirPerfil(b.dataset.alunoperfil);
+  }));
 });
 
 /* ---------- sessões recentes no perfil do aluno (com densidade) ---------- */
