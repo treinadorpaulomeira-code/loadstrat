@@ -1654,8 +1654,11 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-function comecarDescanso(segundos, sub) {
+/* mini=true abre já encolhido na pílula: usado na sessão ao vivo, para o
+   treinador continuar marcando as séries enquanto o descanso corre. */
+function comecarDescanso(segundos, sub, mini) {
   abrirTimer({ modo: "descanso", seg: parseInt(segundos) || 90, sub: sub ?? "" });
+  if (mini) $("#timer").classList.add("mini");
 }
 /* texto "Próximo: Supino — série 2 de 3" */
 function proximoTexto(i) {
@@ -3340,7 +3343,7 @@ async function concluirSerie(i, j) {
   desenharSessao();
   const ok = await gravarSerieViva(i, j);
   if (!ok) { s.concluida = false; desenharSessao(); return; }
-  if (it.series.some((x) => !x.concluida)) comecarDescanso(it.descanso_s, "Descanso · " + it.nome);
+  if (it.series.some((x) => !x.concluida)) comecarDescanso(it.descanso_s, "Descanso · " + it.nome, true);
 }
 
 async function gravarSerieViva(i, j) {
@@ -3418,7 +3421,9 @@ function metricasSessao() {
   const peso = Number(ss.aluno?.peso_kg) || null;
   return { series, reps, avl, trabalho, recuperacao, recMedidos, total,
     vi: peso ? avl / peso : null,
-    ed: recuperacao > 0 ? avl / recuperacao : null };
+    /* abaixo de 10 s medidos a densidade vira um número sem sentido
+       (▶ e ✓ tocados em seguida), então preferimos não mostrar. */
+    ed: recuperacao >= 10 ? avl / recuperacao : null };
 }
 function resumoSessao() {
   const m = metricasSessao();
