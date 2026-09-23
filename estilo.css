@@ -949,6 +949,32 @@ tbody tr:hover td{background:rgba(47,151,239,.035)}
 /* ---------- sessão ao vivo (treinador) ---------- */
 .ss-topo .cronometro{font-size:26px;font-weight:800;margin-left:auto}
 .ss-topo .btn{margin-left:0}
+/* abas: uma por aluno quando a sessão é de dupla/trio */
+.ss-abas{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px;padding-bottom:2px}
+.ss-aba{flex:0 0 auto;display:flex;align-items:center;gap:9px;background:var(--g1);border:1.5px solid var(--line);
+  border-radius:99px;padding:8px 16px 8px 8px;cursor:pointer;font-family:inherit;color:var(--text);box-shadow:var(--sombra)}
+.ss-aba .av{width:28px;height:28px;border-radius:50%;background:var(--azul-soft);color:var(--azul-dim);
+  display:grid;place-items:center;font-size:12px;font-weight:800}
+.ss-aba b{font-size:14px;font-weight:700}
+.ss-aba span{font-size:12px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.ss-aba.on{border-color:var(--azul);background:var(--azul-soft)}
+.ss-aba.on .av{background:var(--azul);color:#fff}
+/* escolher vários alunos de uma vez */
+.ss-ck{display:flex;align-items:center;gap:12px;width:100%;background:var(--g2);border:1.5px solid transparent;
+  border-radius:14px;padding:12px 16px;margin-bottom:8px;cursor:pointer;font-family:inherit;color:var(--text);text-align:left}
+.ss-ck:hover{border-color:var(--azul)}
+.ss-ck.on{border-color:var(--azul);background:var(--azul-soft)}
+.ss-ck .caixa{width:22px;height:22px;flex:0 0 auto;border-radius:7px;border:2px solid var(--line);
+  display:grid;place-items:center;font-size:13px;color:#fff;font-weight:800}
+.ss-ck.on .caixa{background:var(--azul);border-color:var(--azul)}
+.ss-ck b{display:block;font-size:15px}
+.ss-ck small{display:block;font-size:12px;color:var(--text-faint)}
+.ss-passo{font-size:12px;font-weight:700;color:var(--azul-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+/* quadro de número que vira botão (alunos ativos) */
+.stat.clicavel{width:100%;text-align:left;font-family:inherit;color:var(--text);cursor:pointer;padding-bottom:34px}
+.stat.clicavel:hover{border-color:var(--azul);box-shadow:var(--sombra-forte)}
+.stat.clicavel:active{transform:scale(.99)}
+.stat .seta{position:absolute;left:20px;bottom:14px;font-size:12px;font-weight:700;color:var(--azul)}
 .ss-op{display:block;width:100%;text-align:left;background:var(--g2);border:1.5px solid transparent;border-radius:14px;
   padding:14px 16px;margin-bottom:8px;cursor:pointer;font-family:inherit;color:var(--text)}
 .ss-op:hover{border-color:var(--azul);background:var(--azul-soft)}
