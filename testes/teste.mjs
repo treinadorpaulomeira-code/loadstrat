@@ -639,7 +639,7 @@ const wIso = db.workouts.find((x) => x.nome === "Isometria");
 $(w16, "[data-nav='alunos']").click(); await espera(120);
 ok(!!$(w16, "#tb-alunos [data-treinar]"), "lista de alunos tem o botao 'Treinar agora'");
 $(w16, "#tb-alunos [data-treinar]").click(); await espera(200);
-ok(/Treinar com Ana/.test($(w16, "#modal h3").textContent) && $$(w16, ".ss-op[data-treino]").length >= 1 && !!$(w16, "[data-livre]"),
+ok(/Treino de Ana/.test($(w16, "#modal h3").textContent) && $$(w16, ".ss-op[data-treino]").length >= 1 && !!$(w16, "[data-livre]"),
    "escolha da sessao: treinos publicados + treino livre");
 const opcaoIso = $$(w16, ".ss-op[data-treino]").find((b) => /Isometria/.test(b.textContent)) ?? $(w16, ".ss-op[data-treino]");
 opcaoIso.click(); await espera(250);
@@ -695,6 +695,68 @@ await espera(250);
 const tabela = $(w16, "#pf-sessoes").textContent;
 ok(/ao vivo/.test(tabela) && /900 kg/.test(tabela) && /360 kg\/min/.test(tabela), "sessao aparece no perfil com volume e densidade");
 w16.Date = DataReal;
+
+// ================= PAINEL: alunos ativos + iniciar treino com dupla =================
+db.profiles.push({ id: "a2", papel: "aluno", nome: "Bruno Costa", peso_kg: 80, objetivo: "Forca", esporte: "Ciclismo" });
+db.students.push({ id: "s2", treinador_id: T, aluno_id: "a2", ativo: true });
+db.workouts.push({ id: "w9", treinador_id: T, aluno_id: "a2", nome: "Pernas B", status: "publicado",
+  data: new Date().toISOString().slice(0, 10), semanas: 1, sessoes_por_semana: 1,
+  estrutura: [{ exercise_id: "e2", nome: "Agachamento livre", descanso_s: 120, series: [{ reps_alvo: "8" }, { reps_alvo: "8" }] }] });
+
+let w17 = await abrir(T);
+w17.__rpc = async () => ({ data: { historico_suficiente: false, dias_7: [], carga_28_dias: [], semanas: [] }, error: null });
+await espera(200);
+ok(!!$(w17, "#card-alunos") && /ver a lista/.test($(w17, "#card-alunos").textContent), "quadro 'Alunos ativos' virou botao");
+$(w17, "#card-alunos").click(); await espera(120);
+ok($$(w17, "[data-alunoperfil]").length === 2, "abre a lista com os dois alunos");
+$$(w17, "[data-alunoperfil]").find((b) => /Bruno/.test(b.textContent)).click(); await espera(300);
+ok($(w17, "[data-page='perfil']").classList.contains("on") && /Bruno/.test($(w17, "#pf-nome").textContent),
+   "clicar no nome abre o perfil daquele aluno");
+
+$(w17, "[data-nav='dash']").click(); await espera(120);
+ok(/Iniciar treino/.test($(w17, "#atalho-treinar").textContent), "atalho do painel se chama 'Iniciar treino'");
+$(w17, "#atalho-treinar").click(); await espera(120);
+ok($$(w17, "[data-ssaluno]").length === 2 && $(w17, "#ss-al-ok").disabled, "lista os alunos para marcar; 'Continuar' comeca travado");
+$$(w17, "[data-ssaluno]").forEach((b) => b.click()); await espera(60);
+ok(!$(w17, "#ss-al-ok").disabled && /2 alunos/.test($(w17, "#ss-al-ok").textContent), "marcando dois, o botao libera e conta");
+$(w17, "#ss-al-ok").click(); await espera(250);
+ok(/Aluno 1 de 2/.test($(w17, "#modal").textContent), "pergunta o treino aluno por aluno");
+$(w17, "[data-livre]").click(); await espera(250);
+ok(/Aluno 2 de 2/.test($(w17, "#modal").textContent), "treino livre vale como escolha e passa para o proximo");
+const opBruno = $$(w17, ".ss-op[data-treino]").find((b) => /Pernas B/.test(b.textContent));
+ok(!!opBruno, "o segundo aluno ve os treinos publicados dele");
+opBruno.click(); await espera(400);
+ok($(w17, "[data-page='sessao']").classList.contains("on") && $$(w17, ".ss-aba").length === 2, "entra na sessao com uma aba por aluno");
+const abertasBanco = db.session_logs.filter((x) => !x.finalizada && x.registrada_por === T);
+ok(abertasBanco.length === 2 && new Set(abertasBanco.map((x) => x.aluno_id)).size === 2, "abriu uma sessao no banco para cada aluno");
+
+const topo = () => $(w17, "#ss-aluno").textContent;
+ok(/Ana/.test(topo()) && /Nenhum exerc/.test($(w17, "#ss-lista").textContent), "abre na primeira aba (treino livre, sem exercicio)");
+$$(w17, ".ss-aba")[1].click(); await espera(200);
+ok(/Bruno/.test(topo()) && /Agachamento livre/.test($(w17, "#ss-lista").textContent), "trocar de aba mostra o treino do outro aluno");
+
+digita(w17, $(w17, "[data-sscampo='0:0:carga']"), "100");
+digita(w17, $(w17, "[data-sscampo='0:0:reps']"), "8");
+$(w17, "[data-ssok='0:0']").click(); await espera(250);
+ok(/1\/2/.test($$(w17, ".ss-aba")[1].textContent), "a aba mostra quantas series ja foram feitas");
+$$(w17, ".ss-aba")[0].click(); await espera(200);
+ok(/Ana/.test(topo()) && /Nenhum exerc/.test($(w17, "#ss-lista").textContent) &&
+   /^0Séries feitas/.test($(w17, "#ss-resumo").textContent),
+   "a aba da Ana continua vazia: os registros do Bruno nao vazam para ela");
+
+$$(w17, ".ss-aba")[1].click(); await espera(200);
+$(w17, "#ss-fim").click(); await espera(150);
+ok(/Finalizar a sessão de Bruno/.test($(w17, "#modal h3").textContent), "finaliza a sessao do aluno que esta na aba aberta");
+$(w17, "[data-sspse='6']").click();
+$(w17, "#ss-salvar").click(); await espera(400);
+ok($(w17, "[data-page='sessao']").classList.contains("on") && $(w17, "#ss-abas").hidden && /Ana/.test(topo()),
+   "encerrando um, a sessao do outro continua aberta");
+ok(db.session_logs.find((x) => x.aluno_id === "a2" && x.finalizada && x.pse === 6), "a sessao do Bruno ficou gravada com PSE 6");
+
+$(w17, "#ss-fim").click(); await espera(150);
+$(w17, "[data-sspse='4']").click();
+$(w17, "#ss-salvar").click(); await espera(400);
+ok($(w17, "[data-page='perfil']").classList.contains("on"), "encerrando o ultimo, volta para o perfil do aluno");
 
 console.log("\n" + (falhas.length ? falhas.length + " FALHA(S)" : "TUDO PASSOU"));
 process.exit(falhas.length ? 1 : 0);
