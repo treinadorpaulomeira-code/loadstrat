@@ -42,9 +42,9 @@ para conferir os cálculos de carga contra a planilha/relatório.
 ## Testes
 
 - `testes/` — teste offline que roda o `index.html` e o `app.js` reais num DOM simulado com um
-  Supabase falso: `node teste.mjs` (156 checagens; precisa de `npm i jsdom`). Cobre ondulação,
+  Supabase falso: `node teste.mjs` (175 checagens; precisa de `npm i jsdom`). Cobre ondulação,
   check-in, vídeos, registro por prescrição, cronômetro, periodização, 1RM, hidratação,
-  calendário, prontidão, progressão e a sessão ao vivo do treinador.
+  calendário, prontidão, progressão e a sessão ao vivo do treinador (inclusive com dois alunos juntos).
 - Os testes de permissão (RLS) são feitos por SQL direto no Supabase, simulando cada papel.
 
 ## Fora do escopo (combinado)
