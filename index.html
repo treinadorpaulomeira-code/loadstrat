@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=12">
+<link rel="stylesheet" href="./estilo.css?v=13">
 </head>
 <body>
 
@@ -127,6 +127,10 @@
           <button class="atalho" data-ir="alunos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
             <b>Carga dos alunos</b></button>
+          <button class="atalho" id="atalho-treinar">
+            <span class="selo">Ao vivo</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h11v11h-11z" opacity=".25"/><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+            <b>Treinar agora</b></button>
           <button class="atalho" id="atalho-novo-ex">
             <span class="selo">Vídeo</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M22 7l-5 4 5 4zM9.5 9v6M6.5 12h6"/></svg>
@@ -227,6 +231,7 @@
       <header class="topbar">
         <div><h1 id="pf-nome">Aluno</h1><div class="sub" id="pf-sub">—</div></div>
         <button class="btn ghost" id="pf-voltar">← Alunos</button>
+        <button class="btn ghost" id="pf-treinar">Treinar agora</button>
         <button class="btn" id="pf-prescrever">Prescrever</button>
       </header>
       <div class="conteudo" id="pf-conteudo">
@@ -262,6 +267,11 @@
           <thead><tr><th>Exercício</th><th>Melhor série</th><th>Epley</th><th>Brzycki</th><th>1RM est.</th><th>Relativo</th><th>Nível</th></tr></thead>
           <tbody id="pf-rm"></tbody></table></div>
 
+        <div class="sechd"><h2>Sessões recentes</h2><span class="mini">últimos 28 dias · volume, índice de volume e densidade</span></div>
+        <div class="card pad0 rolagem"><table>
+          <thead><tr><th>Dia</th><th>Treino</th><th>Séries</th><th>Volume</th><th>IV</th><th>Densidade</th><th>PSE · duração</th></tr></thead>
+          <tbody id="pf-sessoes"></tbody></table></div>
+
         <div class="sechd"><h2>Periodização</h2><a id="pf-ir-plano">Abrir planejador →</a></div>
         <div class="card" id="pf-plano"></div>
 
@@ -277,6 +287,19 @@
             <div class="card" id="pf-agua"></div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="sessao">
+      <header class="topbar ss-topo">
+        <div><h1 id="ss-aluno">Sessão</h1><div class="sub" id="ss-sub">—</div></div>
+        <span class="cronometro" id="ss-tempo">00:00</span>
+        <button class="btn ghost" id="ss-add">+ Exercício</button>
+        <button class="btn" id="ss-fim">Finalizar</button>
+      </header>
+      <div class="conteudo">
+        <div class="grid g4" id="ss-resumo"></div>
+        <div id="ss-lista"></div>
       </div>
     </section>
 
@@ -439,32 +462,34 @@
     </button>
   </nav>
 
+</div>
+
+<!-- ============ CRONÔMETRO (aluno e treinador) ============ -->
   <!-- cronômetro: descanso e séries por tempo -->
-  <div class="timer" id="timer" hidden>
-    <div class="timer-card" role="dialog" aria-live="polite">
-      <div class="timer-topo">
-        <button class="timer-ic" id="timer-minimizar" title="Minimizar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="timer-tit"><b id="timer-rot">Descanso</b><span id="timer-sub"></span></div>
-        <button class="timer-ic" id="timer-fechar" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </div>
-      <div class="timer-anel">
-        <svg viewBox="0 0 200 200"><circle class="fundo" cx="100" cy="100" r="88"/><circle class="arco" id="timer-arco" cx="100" cy="100" r="88" stroke-dasharray="552.92" stroke-dashoffset="0"/></svg>
-        <div class="timer-meio"><span id="timer-fase"></span><b id="timer-num">00:00</b></div>
-      </div>
-      <div class="timer-ajuste">
-        <button data-tajuste="-15">−15s</button>
-        <button data-tajuste="15">+15s</button>
-      </div>
-      <div class="timer-acoes">
-        <button class="btn ghost" id="timer-pausar">Pausar</button>
-        <button class="btn" id="timer-fim">Pular</button>
-      </div>
+<div class="timer" id="timer" hidden>
+  <div class="timer-card" role="dialog" aria-live="polite">
+    <div class="timer-topo">
+      <button class="timer-ic" id="timer-minimizar" title="Minimizar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="timer-tit"><b id="timer-rot">Descanso</b><span id="timer-sub"></span></div>
+      <button class="timer-ic" id="timer-fechar" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <div class="timer-mini" id="timer-mini">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>
-      <b id="timer-mini-num">00:00</b><span>descanso</span>
-      <button id="timer-mini-pular">pular</button>
+    <div class="timer-anel">
+      <svg viewBox="0 0 200 200"><circle class="fundo" cx="100" cy="100" r="88"/><circle class="arco" id="timer-arco" cx="100" cy="100" r="88" stroke-dasharray="552.92" stroke-dashoffset="0"/></svg>
+      <div class="timer-meio"><span id="timer-fase"></span><b id="timer-num">00:00</b></div>
     </div>
+    <div class="timer-ajuste">
+      <button data-tajuste="-15">−15s</button>
+      <button data-tajuste="15">+15s</button>
+    </div>
+    <div class="timer-acoes">
+      <button class="btn ghost" id="timer-pausar">Pausar</button>
+      <button class="btn" id="timer-fim">Pular</button>
+    </div>
+  </div>
+  <div class="timer-mini" id="timer-mini">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>
+    <b id="timer-mini-num">00:00</b><span>descanso</span>
+    <button id="timer-mini-pular">pular</button>
   </div>
 </div>
 
@@ -477,6 +502,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=12"></script>
+<script type="module" src="./app.js?v=13"></script>
 </body>
 </html>
