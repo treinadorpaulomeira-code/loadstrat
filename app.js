@@ -273,7 +273,8 @@ function desenharAlunos() {
     escapar(a.nome) + "</b></div></td><td class='mini'>" + escapar(a.objetivo ?? "-") +
     "</td><td class='mini'>" + escapar(a.esporte ?? "-") + "</td><td class='mini'>" +
     (a.peso_kg ? a.peso_kg + " kg" : "-") + "</td><td class='mini' data-contagem='" + a.id +
-    "'>-</td><td class='acoes-linha'><button class='btn ghost sm' data-perfil='" + a.id + "'>ver carga</button> " +
+    "'>-</td><td class='acoes-linha'><button class='btn sm' data-treinar='" + a.id + "'>Treinar agora</button> " +
+    "<button class='btn ghost sm' data-perfil='" + a.id + "'>ver carga</button> " +
     "<button class='btn ghost sm' data-prescrever='" + a.id + "'>prescrever</button></td></tr>"
   ).join("");
 
@@ -2009,6 +2010,11 @@ async function carregarAlertas() {
 }
 
 function ligarPerfis() {
+  $$("[data-treinar]").forEach((b) => {
+    if (b.dataset.ligado) return;
+    b.dataset.ligado = "1";
+    b.addEventListener("click", () => abrirSessao(b.dataset.treinar));
+  });
   $$("[data-perfil]").forEach((b) => {
     if (b.dataset.ligado) return;
     b.dataset.ligado = "1";
@@ -2052,6 +2058,7 @@ async function abrirPerfil(alunoId) {
   if (ck.ok) desenharCheckinsTreinador(ck.data ?? [], a.sexo === "F");
   desenharEvolucao();
   desenharRM(a);
+  desenharSessoesDoAluno(alunoId);
   desenharPlanoNoPerfil(alunoId);
   desenharExtrasEAgua(alunoId);
 }
@@ -3129,4 +3136,422 @@ function desenharProgresso() {
       dica: dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) + " · " + (r.melhor?.txt ?? "") };
   }), { unidade: eixo[1] });
   $("#prog-sel").addEventListener("change", (e) => { prog.ex = e.target.value; desenharProgresso(); });
+}
+
+/* =========================================================
+   SESSÃO AO VIVO (treinador) — presencial, com o aluno na frente.
+   Registra série a série com os tempos reais, para calcular
+   a densidade do exercício = volume ÷ tempo de recuperação (kg/s),
+   contando só os intervalos entre séries do MESMO exercício.
+   ========================================================= */
+const ss = { aluno: null, sessaoId: null, treino: null, nome: "", itens: [], inicio: null, relogio: null, salvando: 0 };
+
+const agoraISO = () => new Date().toISOString();
+const segundosEntre = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 1000));
+
+/* ---------- começar ---------- */
+async function abrirSessao(alunoId) {
+  const a = estado.alunos.find((x) => x.id === alunoId) ?? estado.perfilAberto;
+  if (!a) return erro("Escolha um aluno primeiro");
+  abrirModal("<h3>Treinar com " + escapar(a.nome.split(" ")[0]) + "</h3>" +
+    "<p class='desc'>Você registra as séries enquanto ele treina. Entra no histórico dele igual a um treino feito pelo app.</p>" +
+    "<div id='ss-op' class='carregando'>Buscando os treinos dele…</div>");
+  const [aberta, treinos] = await Promise.all([
+    sb.from("session_logs").select("id,data,workout_id,nome_livre,criado_em").eq("aluno_id", a.id).eq("finalizada", false)
+      .order("criado_em", { ascending: false }).limit(1),
+    sb.from("workouts").select("id,nome,data,estrutura,semanas,sessoes_por_semana,status").eq("aluno_id", a.id)
+      .eq("status", "publicado").order("data", { ascending: false }).limit(12),
+  ]);
+  const lista = (treinos.data ?? []).filter((t) => Array.isArray(t.estrutura) && t.estrutura.length);
+  const emAberto = aberta.data?.[0] ?? null;
+  if (!$("#ss-op")) return; // o modal foi fechado (ou reaberto) enquanto buscávamos
+  $("#ss-op").outerHTML =
+    (emAberto ? "<button class='ss-op destaque' data-retomar='" + emAberto.id + "'><b>Continuar a sessão em aberto</b>" +
+      "<span>começou " + new Date(emAberto.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span></button>" : "") +
+    lista.map((t) => "<button class='ss-op' data-treino='" + t.id + "'><b>" + escapar(t.nome) + "</b><span>" +
+      t.estrutura.length + " exercícios · publicado em " + new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR") + "</span></button>").join("") +
+    "<button class='ss-op livre' data-livre='1'><b>Treino livre</b><span>monte na hora, escolhendo os exercícios</span></button>" +
+    "<div class='acoes'><button class='btn ghost' id='ss-cancelar'>Cancelar</button></div>";
+  $("#ss-cancelar").addEventListener("click", fecharModal);
+  $$("[data-treino]").forEach((b) => b.addEventListener("click", () => iniciarSessao(a, lista.find((t) => t.id === b.dataset.treino))));
+  $$("[data-livre]").forEach((b) => b.addEventListener("click", () => iniciarSessao(a, null)));
+  $$("[data-retomar]").forEach((b) => b.addEventListener("click", () => retomarSessao(a, emAberto, lista)));
+}
+
+async function iniciarSessao(aluno, treino) {
+  const semana = treino ? await semanaDoTreino(aluno.id, treino) : 1;
+  const r = await comTratamento(
+    sb.from("session_logs").insert({
+      aluno_id: aluno.id, workout_id: treino?.id ?? null, registrada_por: estado.usuario.id,
+      semana, nome_livre: treino ? null : "Treino livre",
+    }).select().single(),
+    "Não consegui abrir a sessão");
+  if (!r.ok) return;
+  ss.aluno = aluno; ss.sessaoId = r.data.id; ss.treino = treino ?? null;
+  ss.nome = treino?.nome ?? "Treino livre";
+  ss.inicio = new Date(r.data.criado_em ?? Date.now());
+  ss.itens = (treino?.estrutura ?? []).map((ex) => ({
+    exercise_id: ex.exercise_id, nome: ex.nome, registro: registroDe(ex),
+    descanso_s: parseInt(ex.descanso_s) || 90,
+    series: seriesDaSemana(ex, semana).map((s) => novaSerieViva(s)),
+  }));
+  fecharModal();
+  entrarNaSessao();
+}
+async function semanaDoTreino(alunoId, treino) {
+  const n = await sb.from("session_logs").select("id", { count: "exact", head: true })
+    .eq("aluno_id", alunoId).eq("workout_id", treino.id).eq("finalizada", true);
+  const feitas = n.count ?? 0;
+  return Math.min(treino.semanas || 1, Math.floor(feitas / (treino.sessoes_por_semana || 1)) + 1);
+}
+const novaSerieViva = (alvo = {}) => ({
+  carga: "", reps: "", tempo: "", dist: "",
+  alvo_carga: alvo.carga_alvo ?? "", alvo_reps: alvo.reps_alvo ?? "",
+  alvo_tempo: alvo.tempo_alvo ? fmtTempo(alvo.tempo_alvo) : "", alvo_dist: alvo.dist_alvo ?? "",
+  iniciada_em: null, concluida_em: null, concluida: false,
+});
+
+async function retomarSessao(aluno, sessao, treinos) {
+  const treino = treinos.find((t) => t.id === sessao.workout_id) ?? null;
+  const feitos = await sb.from("workout_sets").select("*").eq("session_id", sessao.id).order("serie_num");
+  ss.aluno = aluno; ss.sessaoId = sessao.id; ss.treino = treino;
+  ss.nome = treino?.nome ?? sessao.nome_livre ?? "Treino livre";
+  ss.inicio = new Date(sessao.criado_em ?? Date.now());
+  const semana = treino ? await semanaDoTreino(aluno.id, treino) : 1;
+  ss.itens = (treino?.estrutura ?? []).map((ex) => ({
+    exercise_id: ex.exercise_id, nome: ex.nome, registro: registroDe(ex),
+    descanso_s: parseInt(ex.descanso_s) || 90,
+    series: seriesDaSemana(ex, semana).map((s) => novaSerieViva(s)),
+  }));
+  // exercícios que só existem no que já foi registrado (treino livre ou acrescentados)
+  (feitos.data ?? []).forEach((f) => {
+    let item = ss.itens.find((i) => i.exercise_id === f.exercise_id);
+    if (!item) {
+      const ex = estado.exercicios.find((e) => e.id === f.exercise_id);
+      item = { exercise_id: f.exercise_id, nome: ex?.nome ?? "Exercício", registro: f.tempo_s != null ? "carga_tempo" : "carga_reps", descanso_s: 90, series: [] };
+      ss.itens.push(item);
+    }
+    while (item.series.length < f.serie_num) item.series.push(novaSerieViva());
+    const s = item.series[f.serie_num - 1];
+    s.carga = f.carga_kg ?? ""; s.reps = f.reps ?? ""; s.tempo = f.tempo_s != null ? fmtTempo(f.tempo_s) : "";
+    s.dist = f.dist_m ?? ""; s.iniciada_em = f.iniciada_em; s.concluida_em = f.concluida_em; s.concluida = !!f.concluida;
+  });
+  fecharModal();
+  entrarNaSessao();
+}
+
+function entrarNaSessao() {
+  irPara("sessao");
+  $("#ss-aluno").textContent = ss.aluno.nome;
+  $("#ss-sub").textContent = ss.nome + " · sessão ao vivo";
+  clearInterval(ss.relogio);
+  const passo = () => {
+    const seg = Math.max(0, Math.floor((Date.now() - ss.inicio.getTime()) / 1000));
+    $("#ss-tempo").textContent = String(Math.floor(seg / 60)).padStart(2, "0") + ":" + String(seg % 60).padStart(2, "0");
+  };
+  passo();
+  ss.relogio = setInterval(passo, 1000);
+  desenharSessao();
+}
+
+/* ---------- a tela ---------- */
+function desenharSessao() {
+  const alvo = $("#ss-lista");
+  if (!ss.itens.length) {
+    alvo.innerHTML = "<div class='empty'><p>Nenhum exercício ainda. Toque em <b>+ Exercício</b> para começar.</p></div>";
+    resumoSessao();
+    return;
+  }
+  alvo.innerHTML = ss.itens.map((it, i) => {
+    const campos = REGISTROS[it.registro].campos;
+    const feitas = it.series.filter((s) => s.concluida).length;
+    return "<div class='exblock ss-ex'><div class='exhd'>" +
+      "<span class='nm'>" + escapar(it.nome) + "</span>" +
+      "<span class='mini'>" + feitas + " de " + it.series.length + " séries</span>" +
+      "<select data-ssreg='" + i + "'>" + Object.entries(REGISTROS).map(([k, r]) =>
+        "<option value='" + k + "'" + (it.registro === k ? " selected" : "") + ">" + r.rot + "</option>").join("") + "</select>" +
+      "<label class='ss-desc'>desc. <input value='" + it.descanso_s + "' inputmode='numeric' data-ssdesc='" + i + "'> s</label>" +
+      "<button class='del' data-ssrmex='" + i + "' title='Tirar exercício'>×</button></div>" +
+      "<div class='exbd'><table class='setgrid ss-grid'><thead><tr><th style='width:30px'>#</th>" +
+      campos.map((k) => "<th>" + CAMPOS[k].rot + "</th>").join("") +
+      "<th class='ss-tempos-h' style='width:130px'>Tempos</th><th style='width:96px'></th></tr></thead><tbody>" +
+      it.series.map((s, j) => linhaSerieViva(it, i, j, s, campos)).join("") +
+      "</tbody></table><button class='btn ghost sm' data-ssadds='" + i + "'>+ Série</button></div></div>";
+  }).join("");
+
+  $$("[data-sscampo]").forEach((inp) => inp.addEventListener("input", () => {
+    const [i, j, campo] = inp.dataset.sscampo.split(":");
+    ss.itens[+i].series[+j][campo] = inp.value;
+    if (ss.itens[+i].series[+j].concluida) gravarSerieViva(+i, +j);
+    resumoSessao();
+  }));
+  $$("[data-ssreg]").forEach((s) => s.addEventListener("change", () => { ss.itens[+s.dataset.ssreg].registro = s.value; desenharSessao(); }));
+  $$("[data-ssdesc]").forEach((inp) => inp.addEventListener("input", () => { ss.itens[+inp.dataset.ssdesc].descanso_s = inp.value; }));
+  $$("[data-ssini]").forEach((b) => b.addEventListener("click", () => comecarSerie(...b.dataset.ssini.split(":").map(Number))));
+  $$("[data-ssok]").forEach((b) => b.addEventListener("click", () => concluirSerie(...b.dataset.ssok.split(":").map(Number))));
+  $$("[data-ssadds]").forEach((b) => b.addEventListener("click", () => {
+    const it = ss.itens[+b.dataset.ssadds];
+    const u = it.series[it.series.length - 1];
+    it.series.push(novaSerieViva({ carga_alvo: u?.carga || u?.alvo_carga, reps_alvo: u?.reps || u?.alvo_reps }));
+    desenharSessao();
+  }));
+  $$("[data-ssrmex]").forEach((b) => b.addEventListener("click", () => removerExercicioSessao(+b.dataset.ssrmex)));
+  resumoSessao();
+}
+
+function linhaSerieViva(it, i, j, s, campos) {
+  const trabalho = s.iniciada_em && s.concluida_em ? fmtTempo(segundosEntre(s.iniciada_em, s.concluida_em)) : "—";
+  const desc = descansoDaSerie(it, j);
+  return "<tr class='" + (s.concluida ? "feita" : "") + "'><td class='sn'>" + (j + 1) + "</td>" +
+    campos.map((k) => "<td><input value='" + escapar(s[k]) + "' placeholder='" + escapar(s["alvo_" + k] || "-") +
+      "' inputmode='" + CAMPOS[k].modo + "' data-sscampo='" + i + ":" + j + ":" + k + "'></td>").join("") +
+    "<td class='ss-tempos'><span title='tempo da série'>▶ " + trabalho + "</span>" +
+    "<span title='descanso antes desta série'>⏱ " + (desc == null ? "—" : fmtTempo(desc)) + "</span></td>" +
+    "<td class='ss-acoes'>" +
+    "<button class='ss-b ini" + (s.iniciada_em && !s.concluida ? " on" : "") + "' data-ssini='" + i + ":" + j + "' title='Começou a série'>▶</button>" +
+    "<button class='ss-b ok" + (s.concluida ? " on" : "") + "' data-ssok='" + i + ":" + j + "' title='Série concluída'>✓</button></td></tr>";
+}
+
+/* descanso real antes da série j (só entre séries do mesmo exercício) */
+function descansoDaSerie(it, j) {
+  if (j === 0) return null;
+  const ant = it.series[j - 1], atual = it.series[j];
+  if (ant?.concluida_em && atual?.iniciada_em) return segundosEntre(ant.concluida_em, atual.iniciada_em);
+  if (ant?.concluida_em && atual?.concluida_em) return null;  // sem o "▶" não dá para separar descanso de execução
+  return null;
+}
+
+async function comecarSerie(i, j) {
+  const s = ss.itens[i].series[j];
+  s.iniciada_em = agoraISO();
+  s.concluida = false; s.concluida_em = null;
+  fecharTimer();
+  desenharSessao();
+  gravarSerieViva(i, j);
+}
+async function concluirSerie(i, j) {
+  const it = ss.itens[i], s = it.series[j];
+  if (!s.iniciada_em) s.iniciada_em = agoraISO();
+  s.concluida_em = agoraISO();
+  if (REGISTROS[it.registro].campos.every((k) => !String(s[k] ?? "").trim())) {
+    s.carga = s.alvo_carga; s.reps = s.alvo_reps; s.tempo = s.alvo_tempo; s.dist = s.alvo_dist;
+  }
+  s.concluida = true;
+  desenharSessao();
+  const ok = await gravarSerieViva(i, j);
+  if (!ok) { s.concluida = false; desenharSessao(); return; }
+  if (it.series.some((x) => !x.concluida)) comecarDescanso(it.descanso_s, "Descanso · " + it.nome);
+}
+
+async function gravarSerieViva(i, j) {
+  const it = ss.itens[i], s = it.series[j];
+  const usa = REGISTROS[it.registro].campos;
+  const num = (v) => { const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
+  const seg = usa.includes("tempo") ? segundos(s.tempo) : null;
+  ss.salvando++;
+  const r = await comTratamento(
+    sb.from("workout_sets").upsert({
+      session_id: ss.sessaoId, exercise_id: it.exercise_id, serie_num: j + 1,
+      carga_kg: usa.includes("carga") ? num(s.carga) : null,
+      reps: usa.includes("reps") && s.reps !== "" ? parseInt(s.reps) || null : null,
+      tempo_s: seg, dist_m: usa.includes("dist") ? num(s.dist) : null,
+      concluida: s.concluida, iniciada_em: s.iniciada_em, concluida_em: s.concluida_em,
+    }, { onConflict: "session_id,exercise_id,serie_num" }).select().single(),
+    "Não consegui salvar a série");
+  ss.salvando--;
+  return r.ok;
+}
+
+async function removerExercicioSessao(i) {
+  const it = ss.itens[i];
+  if (it.series.some((s) => s.concluida))
+    await sb.from("workout_sets").delete().eq("session_id", ss.sessaoId).eq("exercise_id", it.exercise_id);
+  ss.itens.splice(i, 1);
+  desenharSessao();
+}
+
+/* ---------- acrescentar exercício no meio da sessão ---------- */
+$("#ss-add").addEventListener("click", () => {
+  abrirModal("<h3>Acrescentar exercício</h3><p class='desc'>Entra agora na sessão de " + escapar(ss.aluno?.nome.split(" ")[0] ?? "") + ".</p>" +
+    "<input class='lib-search' id='ss-busca' placeholder='Buscar exercício…' autocomplete='off'>" +
+    "<div class='liblist ss-lib' id='ss-lib'></div>" +
+    "<div class='acoes'><button class='btn ghost' id='ss-lib-fechar'>Fechar</button></div>");
+  const desenhar = () => {
+    const busca = normalizar($("#ss-busca").value);
+    const lista = estado.exercicios.filter((e) => !busca || normalizar(e.nome).includes(busca)).slice(0, 40);
+    $("#ss-lib").innerHTML = lista.length ? lista.map((e) =>
+      "<button class='libitem' data-ssnovo='" + e.id + "'><div><b>" + escapar(e.nome) + "</b><div class='m'>" +
+      escapar(e.grupo ?? "-") + " · " + escapar(e.padrao ?? "-") + "</div></div><div class='plus'>+</div></button>").join("")
+      : "<p class='vazio'>Nada com esse nome.</p>";
+    $$("[data-ssnovo]").forEach((b) => b.addEventListener("click", () => {
+      const ex = estado.exercicios.find((e) => e.id === b.dataset.ssnovo);
+      if (ss.itens.some((i) => i.exercise_id === ex.id)) return aviso(ex.nome + " já está na sessão");
+      ss.itens.push({ exercise_id: ex.id, nome: ex.nome, registro: "carga_reps", descanso_s: 90,
+        series: [novaSerieViva(), novaSerieViva(), novaSerieViva()] });
+      fecharModal();
+      desenharSessao();
+      bom(ex.nome + " entrou na sessão");
+    }));
+  };
+  $("#ss-busca").addEventListener("input", desenhar);
+  $("#ss-lib-fechar").addEventListener("click", fecharModal);
+  desenhar();
+});
+
+/* ---------- números da sessão ---------- */
+function metricasSessao() {
+  let series = 0, reps = 0, avl = 0, trabalho = 0, recuperacao = 0, recMedidos = 0;
+  ss.itens.forEach((it) => {
+    it.series.forEach((s, j) => {
+      if (!s.concluida) return;
+      series++;
+      const kg = parseFloat(String(s.carga).replace(",", ".")) || 0;
+      const r = parseInt(s.reps) || 0;
+      reps += r;
+      avl += kg * r;
+      if (s.iniciada_em && s.concluida_em) trabalho += segundosEntre(s.iniciada_em, s.concluida_em);
+      const d = descansoDaSerie(it, j);
+      if (d != null) { recuperacao += d; recMedidos++; }
+    });
+  });
+  const total = ss.inicio ? Math.round((Date.now() - ss.inicio.getTime()) / 1000) : 0;
+  const peso = Number(ss.aluno?.peso_kg) || null;
+  return { series, reps, avl, trabalho, recuperacao, recMedidos, total,
+    vi: peso ? avl / peso : null,
+    ed: recuperacao > 0 ? avl / recuperacao : null };
+}
+function resumoSessao() {
+  const m = metricasSessao();
+  $("#ss-resumo").innerHTML =
+    "<div class='stat'><div class='v'>" + m.series + "</div><div class='l'>Séries feitas</div>" +
+      "<div class='d mini'>" + (m.reps ? m.reps + " repetições" : "—") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + fmt(m.avl) + "</div><div class='l'>Volume (kg)</div>" +
+      "<div class='d mini'>" + (m.vi ? "índice de volume " + fmt(m.vi, 1) : "peso do aluno não cadastrado") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + (m.ed ? fmt(m.ed * 60) : "—") + "</div><div class='l'>Densidade (kg/min)</div>" +
+      "<div class='d mini'>" + (m.ed ? fmt(m.ed, 2) + " kg/s · " + m.recMedidos + " intervalos medidos" : "use ▶ e ✓ para medir o descanso") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + fmtTempo(m.recuperacao) + "</div><div class='l'>Tempo de recuperação</div>" +
+      "<div class='d mini'>trabalho " + fmtTempo(m.trabalho) + "</div></div>";
+}
+
+/* ---------- finalizar ---------- */
+$("#ss-fim").addEventListener("click", () => {
+  if (!ss.sessaoId) return;
+  const m = metricasSessao();
+  const min = Math.max(1, Math.round(m.total / 60));
+  abrirModal("<h3>Finalizar a sessão</h3><p class='desc'>Pergunte ao aluno o esforço da sessão (Borg 1–10).</p>" +
+    "<div class='ss-fim-resumo'>" +
+      "<div><span>Séries</span><b>" + m.series + "</b></div>" +
+      "<div><span>Volume</span><b>" + fmt(m.avl) + " kg</b></div>" +
+      (m.vi ? "<div><span>Índice de volume</span><b>" + fmt(m.vi, 1) + "</b></div>" : "") +
+      "<div><span>Densidade</span><b>" + (m.ed ? fmt(m.ed * 60) + " kg/min" : "—") + "</b></div>" +
+      "<div><span>Recuperação</span><b>" + fmtTempo(m.recuperacao) + "</b></div>" +
+      "<div><span>Duração</span><b>" + fmtTempo(m.total) + "</b></div></div>" +
+    "<div class='pse-legenda'><span>muito leve</span><span>máximo</span></div>" +
+    "<div class='pse-grade' id='ss-pse'>" + [1,2,3,4,5,6,7,8,9,10].map((n) => "<button type='button' data-sspse='" + n + "'>" + n + "</button>").join("") + "</div>" +
+    "<div class='linha'><label class='campo'><span>Duração (min)</span><input id='ss-min' type='number' inputmode='numeric' min='1' max='400' value='" + min + "'></label></div>" +
+    "<label class='campo'><span>Observação da sessão</span><textarea id='ss-obs' rows='2' maxlength='500' placeholder='Técnica, dor, ajuste de carga…'></textarea></label>" +
+    "<div id='ss-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='ss-voltar'>Voltar</button>" +
+    "<button class='btn perigo' id='ss-apagar'>Apagar sessão</button>" +
+    "<button class='btn' id='ss-salvar'>Salvar e encerrar</button></div>");
+  let pse = null;
+  $$("[data-sspse]").forEach((b) => b.addEventListener("click", () => {
+    pse = +b.dataset.sspse;
+    $$("[data-sspse]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $("#ss-voltar").addEventListener("click", fecharModal);
+  $("#ss-apagar").addEventListener("click", apagarSessao);
+  $("#ss-salvar").addEventListener("click", async () => {
+    if (!pse) { $("#ss-erro").textContent = "Escolha o esforço (PSE) que o aluno relatou."; $("#ss-erro").hidden = false; return; }
+    const btn = $("#ss-salvar"); btn.disabled = true; btn.textContent = "Salvando…";
+    while (ss.salvando > 0) await new Promise((r) => setTimeout(r, 120));   // espera as séries em voo
+    const r = await comTratamento(
+      sb.from("session_logs").update({ finalizada: true, pse, duracao_min: parseInt($("#ss-min").value) || min,
+        obs: $("#ss-obs").value.trim() || null }).eq("id", ss.sessaoId).select().single(),
+      "Não consegui finalizar a sessão");
+    if (!r.ok) { btn.disabled = false; btn.textContent = "Salvar e encerrar"; return; }
+    const conf = await sb.from("session_logs").select("finalizada,pse").eq("id", ss.sessaoId).maybeSingle();
+    if (!conf.data?.finalizada) { btn.disabled = false; btn.textContent = "Salvar e encerrar";
+      return erro("Salvei, mas a conferência não bateu. Confira o histórico do aluno."); }
+    const aluno = ss.aluno;
+    encerrarSessao();
+    fecharModal();
+    bom("Sessão registrada para " + aluno.nome.split(" ")[0]);
+    abrirPerfil(aluno.id);
+  });
+});
+async function apagarSessao() {
+  const id = ss.sessaoId;
+  if (!id) return;
+  await sb.from("workout_sets").delete().eq("session_id", id);
+  const r = await comTratamento(sb.from("session_logs").delete().eq("id", id), "Não consegui apagar a sessão");
+  if (!r.ok) return;
+  encerrarSessao();
+  fecharModal();
+  irPara("alunos");
+  bom("Sessão apagada");
+}
+function encerrarSessao() {
+  clearInterval(ss.relogio);
+  fecharTimer();
+  ss.sessaoId = null; ss.itens = []; ss.aluno = null; ss.treino = null;
+}
+
+$("#pf-treinar").addEventListener("click", () => estado.perfilAberto && abrirSessao(estado.perfilAberto.id));
+$("#atalho-treinar").addEventListener("click", () => {
+  if (!estado.alunos.length) return erro("Cadastre um aluno primeiro");
+  if (estado.alunos.length === 1) return abrirSessao(estado.alunos[0].id);
+  abrirModal("<h3>Treinar agora</h3><p class='desc'>Com quem é a sessão?</p>" +
+    estado.alunos.map((a) => "<button class='ss-op' data-ssaluno='" + a.id + "'><b>" + escapar(a.nome) + "</b><span>" +
+      escapar([a.objetivo, a.esporte].filter(Boolean).join(" · ") || "—") + "</span></button>").join("") +
+    "<div class='acoes'><button class='btn ghost' id='ss-al-fechar'>Cancelar</button></div>");
+  $("#ss-al-fechar").addEventListener("click", fecharModal);
+  $$("[data-ssaluno]").forEach((b) => b.addEventListener("click", () => abrirSessao(b.dataset.ssaluno)));
+});
+
+/* ---------- sessões recentes no perfil do aluno (com densidade) ---------- */
+async function desenharSessoesDoAluno(alunoId) {
+  const alvo = $("#pf-sessoes");
+  if (!alvo) return;
+  const desde = new Date(Date.now() - 27 * 864e5).toISOString().slice(0, 10);
+  const s = await sb.from("session_logs").select("id,data,pse,duracao_min,workout_id,nome_livre,registrada_por,obs")
+    .eq("aluno_id", alunoId).eq("finalizada", true).gte("data", desde).order("data", { ascending: false }).limit(20);
+  if (estado.perfilAberto?.id !== alunoId) return;
+  const sessoes = s.data ?? [];
+  if (!sessoes.length) { alvo.innerHTML = "<tr><td colspan='7' class='vazio'>Nenhuma sessão nos últimos 28 dias.</td></tr>"; return; }
+  const sets = await sb.from("workout_sets").select("session_id,exercise_id,serie_num,carga_kg,reps,iniciada_em,concluida_em,concluida")
+    .in("session_id", sessoes.map((x) => x.id)).eq("concluida", true);
+  if (estado.perfilAberto?.id !== alunoId) return;
+  const ids = [...new Set(sessoes.map((x) => x.workout_id).filter(Boolean))];
+  const nomes = {};
+  if (ids.length) {
+    const w = await sb.from("workouts").select("id,nome").in("id", ids);
+    (w.data ?? []).forEach((x) => (nomes[x.id] = x.nome));
+  }
+  const porSessao = {};
+  (sets.data ?? []).forEach((x) => ((porSessao[x.session_id] ??= []).push(x)));
+  const peso = Number(estado.perfilAberto?.peso_kg) || null;
+
+  alvo.innerHTML = sessoes.map((se) => {
+    const lista = (porSessao[se.id] ?? []).slice().sort((a, b) => a.serie_num - b.serie_num);
+    let avl = 0, rec = 0;
+    const porEx = {};
+    lista.forEach((x) => ((porEx[x.exercise_id] ??= []).push(x)));
+    Object.values(porEx).forEach((arr) => {
+      arr.forEach((x, k) => {
+        avl += (Number(x.carga_kg) || 0) * (Number(x.reps) || 0);
+        const ant = arr[k - 1];
+        if (k > 0 && ant?.concluida_em && x.iniciada_em) rec += segundosEntre(ant.concluida_em, x.iniciada_em);
+      });
+    });
+    const ed = rec > 0 ? avl / rec : null;
+    const nome = se.workout_id ? (nomes[se.workout_id] ?? "Treino") : (se.nome_livre ?? "Treino livre");
+    return "<tr><td>" + new Date(se.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+      (se.registrada_por ? " <span class='pill azul' title='sessão conduzida por você'>ao vivo</span>" : "") + "</td>" +
+      "<td><b>" + escapar(nome) + "</b>" + (se.obs ? "<div class='mini'>" + escapar(se.obs) + "</div>" : "") + "</td>" +
+      "<td>" + lista.length + "</td><td>" + (avl ? fmt(avl) + " kg" : "—") + "</td>" +
+      "<td>" + (avl && peso ? fmt(avl / peso, 1) : "—") + "</td>" +
+      "<td>" + (ed ? fmt(ed * 60) + " kg/min" : "<span class='mini'>—</span>") + "</td>" +
+      "<td>" + (se.pse ?? "—") + (se.duracao_min ? " · " + se.duracao_min + " min" : "") + "</td></tr>";
+  }).join("");
 }
