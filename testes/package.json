@@ -1,0 +1,7 @@
+{
+  "name": "loadstrat-testes",
+  "private": true,
+  "type": "module",
+  "description": "Teste offline do LOADSTRAT: roda index.html + app.js num DOM simulado (npm i && node teste.mjs)",
+  "dependencies": { "jsdom": "^24.1.0" }
+}
