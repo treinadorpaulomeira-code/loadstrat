@@ -28,6 +28,10 @@ mobile-first para o aluno, sobre o mesmo Supabase e o mesmo login.
 - `exercises.video_url` aceita só link canônico do YouTube ou arquivo do bucket (check no banco).
 - A forma de registro (carga × reps, carga × tempo, carga × distância, só reps, só tempo)
   é de cada exercício **dentro da prescrição**, não do exercício da biblioteca.
+- Densidade do exercício (ED) = volume ÷ tempo de recuperação, contando só os intervalos
+  **entre séries do mesmo exercício** (N séries → N−1 intervalos). Volume (AVL) = Σ séries ×
+  reps × kg; índice de volume (IV) = AVL ÷ massa corporal. Na sessão ao vivo o intervalo vem
+  dos horários reais (`workout_sets.iniciada_em` / `concluida_em`), nunca do descanso prescrito.
 
 ## Contas de teste
 
@@ -38,8 +42,9 @@ para conferir os cálculos de carga contra a planilha/relatório.
 ## Testes
 
 - `testes/` — teste offline que roda o `index.html` e o `app.js` reais num DOM simulado com um
-  Supabase falso: `node teste.mjs` (140 checagens). Cobre ondulação, check-in, vídeos, registro
-  por prescrição, cronômetro, periodização, 1RM, hidratação, calendário, prontidão e progressão.
+  Supabase falso: `node teste.mjs` (156 checagens; precisa de `npm i jsdom`). Cobre ondulação,
+  check-in, vídeos, registro por prescrição, cronômetro, periodização, 1RM, hidratação,
+  calendário, prontidão, progressão e a sessão ao vivo do treinador.
 - Os testes de permissão (RLS) são feitos por SQL direto no Supabase, simulando cada papel.
 
 ## Fora do escopo (combinado)
