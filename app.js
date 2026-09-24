@@ -169,6 +169,7 @@ function irPara(pagina) {
   if (pagina === "dash") carregarProntidao();
   if (pagina === "biblioteca") desenharBiblioteca();
   if (pagina === "periodizacao" && !$("#per-aluno").options.length) montarPeriodizacao();
+  if (pagina === "gestao") carregarGestao();
 }
 $$(".navitem").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.nav)));
 $$("[data-ir]").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.ir)));
@@ -1087,6 +1088,7 @@ const al = {
 };
 
 async function iniciarAluno() {
+  if (await verificarAcesso()) return;   // mensalidade vencida: trava antes de carregar o treino
   const primeiro = estado.perfil.nome.split(" ")[0];
   $("#aluno-ola").textContent = "Olá, " + primeiro;
   $("#aluno-av").textContent = iniciais(estado.perfil.nome);
@@ -1111,6 +1113,7 @@ function telaAluno(qual) {
   if (qual === "agua") desenharAgua();
   if (qual === "calendario") abrirCalendario();
   if (qual === "progresso") abrirProgresso();
+  if (qual === "pagamento") desenharCobrancasAluno($("#pg-lista"));
 }
 $$("[data-tela-nav]").forEach((b) =>
   b.addEventListener("click", () => telaAluno(b.dataset.telaNav)));
@@ -1198,6 +1201,7 @@ const MARCA_ARTE = "<svg class='arte-marca' viewBox='0 0 24 24' fill='none'>" +
   "<path d='M3 15.5L12 20L21 15.5' stroke='rgba(255,255,255,.22)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>";
 
 const ICONE = {
+  pagamento: "<rect x='2' y='5' width='20' height='14' rx='2'/><path d='M2 10h20M6 15h4'/>",
   executar: "<path d='M10 2h4M12 14l3-3'/><circle cx='12' cy='14' r='8'/>",
   checkin: "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
   historico: "<path d='M4 19V5M4 19h16M8 17V9M12 17V6M16 17v-5'/>",
@@ -1222,12 +1226,15 @@ function desenharAtalhosAluno() {
     "<button class='atalho' data-atalho='extra'>" + svgIcone("extra") + "<b>Treino extra</b><small>Corrida, yoga, pelada…</small></button>" +
     "<button class='atalho' data-atalho='progresso'>" + svgIcone("progresso") + "<b>Minha progressão</b><small>Evolução das cargas</small></button>" +
     "<button class='atalho' data-atalho='calendario'>" + svgIcone("calendario") + "<b>Meu calendário</b></button>" +
-    "<button class='atalho' data-atalho='historico'>" + svgIcone("historico") + "<b>Meu histórico</b></button>";
+    "<button class='atalho' data-atalho='historico'>" + svgIcone("historico") + "<b>Meu histórico</b></button>" +
+    "<button class='atalho' data-atalho='pagamento'>" + svgIcone("pagamento") +
+      (pgA.acesso?.em_atraso ? "<span class='selo'>em atraso</span>" : "") +
+      "<b>Mensalidade</b><small>Pagar por Pix</small></button>";
   $$("[data-atalho='executar']").forEach((b) => b.addEventListener("click", () => {
     if (!al.treinos.length) return;
     comecarTreino((al.treinos.find((t) => t.data === hojeISO()) ?? al.treinos[0]).id);
   }));
-  ["historico", "agua", "extra", "calendario", "progresso"].forEach((t) =>
+  ["historico", "agua", "extra", "calendario", "progresso", "pagamento"].forEach((t) =>
     $$("[data-atalho='" + t + "']").forEach((b) => b.addEventListener("click", () => telaAluno(t))));
   ligarBannerCheckin();
 }
@@ -3662,3 +3669,726 @@ async function desenharSessoesDoAluno(alunoId) {
       "<td>" + (se.pse ?? "—") + (se.duracao_min ? " · " + se.duracao_min + " min" : "") + "</td></tr>";
   }).join("");
 }
+
+/* =========================================================
+   GESTÃO DO TREINADOR — agenda, planos e financeiro.
+   Regras de dinheiro: tudo guardado em CENTAVOS (inteiro),
+   para nunca somar errado. A tela converte na hora de mostrar.
+   ========================================================= */
+const ge = { aba: "agenda", semana: null, mes: null,
+  planos: [], assinaturas: [], slots: [], compromissos: [], cobrancas: [], lancamentos: [] };
+
+const DIAS_CURTO = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+const isoDia = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const dataDe = (iso) => new Date(iso + "T12:00:00");
+const hojeIso = () => isoDia(new Date());
+const segundaDa = (d) => { const x = new Date(d); const n = (x.getDay() + 6) % 7; x.setDate(x.getDate() - n); x.setHours(12, 0, 0, 0); return x; };
+const reais = (c) => {
+  const n = Number(c || 0);
+  return (n < 0 ? "− R$ " : "R$ ") +
+    (Math.abs(n) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+/* aceita "450", "450,00", "R$ 1.250,50" */
+const paraCentavos = (txt) => {
+  const limpo = String(txt ?? "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  const n = parseFloat(limpo);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+const hhmm = (t) => String(t ?? "").slice(0, 5);
+const PERIODOS = { mensal: "por mês", trimestral: "a cada 3 meses", semestral: "a cada 6 meses", anual: "por ano", avulso: "uma vez só" };
+
+/* ---------- abas ---------- */
+$$("[data-ge]").forEach((b) => b.addEventListener("click", () => {
+  ge.aba = b.dataset.ge;
+  $$("[data-ge]").forEach((x) => x.classList.toggle("on", x === b));
+  $$("[data-gp]").forEach((p) => p.classList.toggle("on", p.dataset.gp === ge.aba));
+  carregarGestao();
+}));
+
+async function carregarGestao() {
+  if (ge.aba === "agenda") return carregarAgenda();
+  if (ge.aba === "planos") return carregarPlanos();
+  return carregarFinanceiro();
+}
+
+/* =========================================================
+   AGENDA
+   ========================================================= */
+$("#ag-ant").addEventListener("click", () => { ge.semana.setDate(ge.semana.getDate() - 7); carregarAgenda(); });
+$("#ag-prox").addEventListener("click", () => { ge.semana.setDate(ge.semana.getDate() + 7); carregarAgenda(); });
+$("#ag-hoje").addEventListener("click", () => { ge.semana = segundaDa(new Date()); carregarAgenda(); });
+$("#ag-encaixe").addEventListener("click", () => formCompromisso(null));
+$("#ag-fixos").addEventListener("click", abrirHorariosFixos);
+
+async function carregarAgenda() {
+  ge.semana ??= segundaDa(new Date());
+  const ini = isoDia(ge.semana);
+  const fimD = new Date(ge.semana); fimD.setDate(fimD.getDate() + 6);
+  const fim = isoDia(fimD);
+  $("#ag-titulo").textContent = ge.semana.getDate() + " de " + MESES[ge.semana.getMonth()] +
+    " a " + fimD.getDate() + " de " + MESES[fimD.getMonth()];
+
+  const [slots, comps] = await Promise.all([
+    sb.from("schedule_slots").select("*").eq("ativo", true),
+    sb.from("appointments").select("*").gte("data", ini).lte("data", fim),
+  ]);
+  ge.slots = slots.data ?? [];
+  ge.compromissos = comps.data ?? [];
+  desenharSemana(ini, fim);
+}
+
+/* junta o horário fixo com o que já foi registrado naquele dia */
+function itensDoDia(diaIso) {
+  const d = dataDe(diaIso);
+  const salvos = ge.compromissos.filter((c) => c.data === diaIso);
+  const virtuais = ge.slots
+    .filter((s) => s.dia_semana === d.getDay() && s.inicio <= diaIso && (!s.fim || s.fim >= diaIso))
+    .filter((s) => !salvos.some((c) => c.slot_id === s.id))
+    .map((s) => ({ id: null, slot_id: s.id, aluno_id: s.aluno_id, data: diaIso, hora: s.hora,
+      duracao_min: s.duracao_min, modalidade: s.modalidade, local: s.local, status: "agendado", obs: null }));
+  return [...salvos, ...virtuais].sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+}
+
+function desenharSemana(ini, fim) {
+  const hoje = hojeIso();
+  let total = 0, presencas = 0, faltas = 0, canceladas = 0;
+  const dias = [];
+  for (let k = 0; k < 7; k++) {
+    const d = new Date(ge.semana); d.setDate(d.getDate() + k);
+    const diaIso = isoDia(d);
+    const itens = itensDoDia(diaIso);
+    itens.forEach((i) => {
+      if (i.status === "cancelado" || i.status === "remarcado") canceladas++;
+      else { total++; if (i.status === "presente") presencas++; if (i.status === "falta") faltas++; }
+    });
+    dias.push("<div class='ag-dia" + (diaIso === hoje ? " hoje" : diaIso < hoje ? " passado" : "") + "'>" +
+      "<h4>" + DIAS_CURTO[d.getDay()] + "<b>" + d.getDate() + "</b></h4>" +
+      (itens.length ? itens.map((i) =>
+        "<button class='ag-item " + i.status + " " + i.modalidade + "' data-agitem='" + diaIso + "|" + (i.id ?? "") + "|" + (i.slot_id ?? "") + "'>" +
+        "<span class='ag-hora'>" + hhmm(i.hora) + "</span> <b>" + escapar(nomeAluno(i.aluno_id).split(" ")[0]) + "</b>" +
+        "<span>" + (i.status === "agendado" ? (i.modalidade === "online" ? "online" : (i.local || "presencial"))
+          : { presente: "✓ presente", falta: "✕ falta", cancelado: "cancelado", remarcado: "remarcado" }[i.status]) + "</span></button>").join("")
+        : "<div class='ag-vazio'>livre</div>") +
+      "</div>");
+  }
+  $("#ag-semana").innerHTML = dias.join("");
+  $("#ag-resumo").innerHTML =
+    "<div class='stat'><div class='v'>" + total + "</div><div class='l'>Sessões na semana</div></div>" +
+    "<div class='stat'><div class='v'>" + presencas + "</div><div class='l'>Presenças</div></div>" +
+    "<div class='stat'><div class='v'>" + faltas + "</div><div class='l'>Faltas</div>" +
+      "<div class='d mini'>" + (total ? fmt(faltas * 100 / total, 0) + "% das sessões" : "—") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + canceladas + "</div><div class='l'>Cancelados e remarcados</div></div>";
+
+  $$("[data-agitem]").forEach((b) => b.addEventListener("click", () => {
+    const [diaIso, id, slotId] = b.dataset.agitem.split("|");
+    const item = id ? ge.compromissos.find((c) => c.id === id)
+                    : itensDoDia(diaIso).find((c) => c.slot_id === slotId);
+    if (item) abrirCompromisso(item);
+  }));
+}
+
+/* ---------- um horário: presença, falta, remarcação ---------- */
+function abrirCompromisso(item) {
+  const quem = nomeAluno(item.aluno_id);
+  const d = dataDe(item.data);
+  abrirModal("<h3>" + escapar(quem) + "</h3>" +
+    "<p class='desc'>" + DIAS_CURTO[d.getDay()] + ", " + d.getDate() + " de " + MESES[d.getMonth()] +
+      " · " + hhmm(item.hora) + " · " + item.duracao_min + " min · " + item.modalidade +
+      (item.local ? " · " + escapar(item.local) : "") + "</p>" +
+    "<div class='ss-op-grade'>" +
+      ["presente|Presente|✓", "falta|Falta|✕", "agendado|Voltar para agendado|↺", "cancelado|Cancelado|—"]
+        .map((x) => { const [v, rot, ic] = x.split("|");
+          return "<button class='ss-op" + (item.status === v ? " destaque" : "") + "' data-agst='" + v + "'><b>" + ic + " " + rot + "</b></button>"; }).join("") +
+    "</div>" +
+    "<label class='campo'><span>Observação</span><input id='ag-obs' maxlength='200' value='" + escapar(item.obs ?? "") + "'></label>" +
+    "<div class='acoes'>" +
+      "<button class='btn ghost' id='ag-fechar'>Fechar</button>" +
+      "<button class='btn ghost' id='ag-remarcar'>Remarcar</button>" +
+      (item.id && !item.slot_id ? "<button class='btn perigo' id='ag-apagar'>Apagar</button>" : "") +
+      "<button class='btn' id='ag-treinar'>Treinar agora</button>" +
+    "</div>");
+  $("#ag-fechar").addEventListener("click", fecharModal);
+  $("#ag-treinar").addEventListener("click", () => { fecharModal(); abrirSessao(item.aluno_id); });
+  $("#ag-remarcar").addEventListener("click", () => formCompromisso(null, item));
+  $("#ag-apagar")?.addEventListener("click", async () => {
+    const r = await comTratamento(sb.from("appointments").delete().eq("id", item.id), "Não consegui apagar");
+    if (!r.ok) return;
+    fecharModal(); bom("Encaixe apagado"); carregarAgenda();
+  });
+  $$("[data-agst]").forEach((b) => b.addEventListener("click", () => salvarStatus(item, b.dataset.agst, $("#ag-obs").value.trim())));
+}
+
+async function salvarStatus(item, status, obs) {
+  const linha = { treinador_id: estado.usuario.id, aluno_id: item.aluno_id, slot_id: item.slot_id ?? null,
+    data: item.data, hora: item.hora, duracao_min: item.duracao_min, modalidade: item.modalidade,
+    local: item.local ?? null, status, obs: obs || null };
+  const r = item.id
+    ? await comTratamento(sb.from("appointments").update({ status, obs: obs || null }).eq("id", item.id).select().single(), "Não consegui salvar")
+    : await comTratamento(sb.from("appointments").insert(linha).select().single(), "Não consegui salvar");
+  if (!r.ok) return;
+  fecharModal();
+  bom({ presente: "Presença marcada", falta: "Falta marcada", cancelado: "Sessão cancelada", agendado: "Voltou para agendado" }[status]);
+  carregarAgenda();
+}
+
+/* encaixe novo (ou remarcação de um existente) */
+function formCompromisso(_ignora, origem) {
+  if (!estado.alunos.length) return erro("Cadastre um aluno primeiro");
+  const remarca = !!origem;
+  abrirModal("<h3>" + (remarca ? "Remarcar " + escapar(nomeAluno(origem.aluno_id).split(" ")[0]) : "Encaixar uma sessão") + "</h3>" +
+    "<p class='desc'>" + (remarca ? "O horário antigo fica marcado como remarcado." : "Uma sessão fora do horário fixo.") + "</p>" +
+    "<label class='campo'><span>Aluno</span><select id='en-aluno'>" +
+      estado.alunos.map((a) => "<option value='" + a.id + "'" + (remarca && a.id === origem.aluno_id ? " selected" : "") + ">" + escapar(a.nome) + "</option>").join("") +
+    "</select></label>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Data</span><input type='date' id='en-data' value='" + (origem?.data ?? hojeIso()) + "'></label>" +
+      "<label class='campo'><span>Hora</span><input type='time' id='en-hora' value='" + hhmm(origem?.hora ?? "07:00") + "'></label>" +
+      "<label class='campo'><span>Duração (min)</span><input type='number' id='en-dur' min='10' max='300' value='" + (origem?.duracao_min ?? 60) + "'></label>" +
+    "</div>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Modalidade</span><select id='en-mod'>" +
+        ["presencial", "online"].map((m) => "<option value='" + m + "'" + (origem?.modalidade === m ? " selected" : "") + ">" + m + "</option>").join("") +
+      "</select></label>" +
+      "<label class='campo'><span>Local</span><input id='en-local' maxlength='60' value='" + escapar(origem?.local ?? "") + "'></label>" +
+    "</div>" +
+    "<div id='en-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='en-cancelar'>Cancelar</button>" +
+    "<button class='btn' id='en-salvar'>" + (remarca ? "Remarcar" : "Encaixar") + "</button></div>");
+  $("#en-cancelar").addEventListener("click", fecharModal);
+  $("#en-salvar").addEventListener("click", async () => {
+    const data = $("#en-data").value, hora = $("#en-hora").value;
+    if (!data || !hora) { $("#en-erro").textContent = "Preencha a data e a hora."; $("#en-erro").hidden = false; return; }
+    const novo = { treinador_id: estado.usuario.id, aluno_id: $("#en-aluno").value, data, hora,
+      duracao_min: parseInt($("#en-dur").value) || 60, modalidade: $("#en-mod").value,
+      local: $("#en-local").value.trim() || null, status: "agendado" };
+    const r = await comTratamento(sb.from("appointments").insert(novo).select().single(), "Não consegui agendar");
+    if (!r.ok) return;
+    if (remarca) {
+      if (origem.id) await sb.from("appointments").update({ status: "remarcado" }).eq("id", origem.id);
+      else await sb.from("appointments").insert({ treinador_id: estado.usuario.id, aluno_id: origem.aluno_id,
+        slot_id: origem.slot_id, data: origem.data, hora: origem.hora, duracao_min: origem.duracao_min,
+        modalidade: origem.modalidade, local: origem.local, status: "remarcado" });
+    }
+    fecharModal();
+    bom(remarca ? "Remarcado" : "Sessão encaixada");
+    carregarAgenda();
+  });
+}
+
+/* ---------- horários fixos da semana ---------- */
+async function abrirHorariosFixos() {
+  abrirModal("<h3>Horários fixos</h3><p class='desc'>O que se repete toda semana. A agenda monta os dias a partir daqui.</p>" +
+    "<div id='hf-lista' class='carregando'>Carregando…</div>" +
+    "<div class='acoes'><button class='btn ghost' id='hf-fechar'>Fechar</button>" +
+    "<button class='btn' id='hf-novo'>+ Novo horário</button></div>");
+  $("#hf-fechar").addEventListener("click", fecharModal);
+  $("#hf-novo").addEventListener("click", () => formHorarioFixo());
+  const r = await sb.from("schedule_slots").select("*").order("dia_semana").order("hora");
+  if (!$("#hf-lista")) return;
+  const lista = r.data ?? [];
+  $("#hf-lista").className = "";
+  $("#hf-lista").innerHTML = lista.length ? lista.map((s) =>
+    "<div class='ss-op' style='cursor:default'><b>" + DIAS_CURTO[s.dia_semana] + " · " + hhmm(s.hora) + " — " +
+    escapar(nomeAluno(s.aluno_id)) + "</b><span>" + s.duracao_min + " min · " + s.modalidade +
+    (s.local ? " · " + escapar(s.local) : "") + (s.ativo ? "" : " · inativo") +
+    " <a data-hfed='" + s.id + "'>editar</a> · <a data-hfdel='" + s.id + "'>tirar</a></span></div>").join("")
+    : "<p class='vazio'>Nenhum horário fixo ainda.</p>";
+  $$("[data-hfed]").forEach((a) => a.addEventListener("click", () => formHorarioFixo(lista.find((s) => s.id === a.dataset.hfed))));
+  $$("[data-hfdel]").forEach((a) => a.addEventListener("click", async () => {
+    const r2 = await comTratamento(sb.from("schedule_slots").delete().eq("id", a.dataset.hfdel), "Não consegui tirar");
+    if (r2.ok) { bom("Horário removido"); abrirHorariosFixos(); carregarAgenda(); }
+  }));
+}
+
+function formHorarioFixo(s) {
+  if (!estado.alunos.length) return erro("Cadastre um aluno primeiro");
+  abrirModal("<h3>" + (s ? "Editar horário fixo" : "Novo horário fixo") + "</h3>" +
+    "<label class='campo'><span>Aluno</span><select id='hf-aluno'>" +
+      estado.alunos.map((a) => "<option value='" + a.id + "'" + (s?.aluno_id === a.id ? " selected" : "") + ">" + escapar(a.nome) + "</option>").join("") +
+    "</select></label>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Dia</span><select id='hf-dia'>" +
+        DIAS_CURTO.map((d, k) => "<option value='" + k + "'" + (s?.dia_semana === k ? " selected" : "") + ">" + d + "</option>").join("") +
+      "</select></label>" +
+      "<label class='campo'><span>Hora</span><input type='time' id='hf-hora' value='" + hhmm(s?.hora ?? "07:00") + "'></label>" +
+      "<label class='campo'><span>Duração (min)</span><input type='number' id='hf-dur' min='10' max='300' value='" + (s?.duracao_min ?? 60) + "'></label>" +
+    "</div>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Modalidade</span><select id='hf-mod'>" +
+        ["presencial", "online"].map((m) => "<option value='" + m + "'" + (s?.modalidade === m ? " selected" : "") + ">" + m + "</option>").join("") +
+      "</select></label>" +
+      "<label class='campo'><span>Local</span><input id='hf-local' maxlength='60' value='" + escapar(s?.local ?? "") + "'></label>" +
+    "</div>" +
+    "<div class='acoes'><button class='btn ghost' id='hf-cancelar'>Cancelar</button>" +
+    "<button class='btn' id='hf-salvar'>Salvar</button></div>");
+  $("#hf-cancelar").addEventListener("click", abrirHorariosFixos);
+  $("#hf-salvar").addEventListener("click", async () => {
+    const linha = { treinador_id: estado.usuario.id, aluno_id: $("#hf-aluno").value,
+      dia_semana: parseInt($("#hf-dia").value), hora: $("#hf-hora").value,
+      duracao_min: parseInt($("#hf-dur").value) || 60, modalidade: $("#hf-mod").value,
+      local: $("#hf-local").value.trim() || null };
+    const r = s
+      ? await comTratamento(sb.from("schedule_slots").update(linha).eq("id", s.id).select().single(), "Não consegui salvar")
+      : await comTratamento(sb.from("schedule_slots").insert(linha).select().single(), "Não consegui salvar");
+    if (!r.ok) return;
+    bom("Horário salvo");
+    abrirHorariosFixos();
+    carregarAgenda();
+  });
+}
+
+/* =========================================================
+   PLANOS E ASSINATURAS
+   ========================================================= */
+$("#pl-novo").addEventListener("click", () => formPlano());
+$("#as-nova").addEventListener("click", () => formAssinatura());
+
+async function carregarPlanos() {
+  const [pl, as, co] = await Promise.all([
+    sb.from("plans").select("*").order("modalidade").order("nome"),
+    sb.from("subscriptions").select("*").neq("status", "encerrada"),
+    sb.from("charges").select("id,aluno_id,subscription_id,status,vencimento,valor_centavos"),
+  ]);
+  ge.planos = pl.data ?? [];
+  ge.assinaturas = as.data ?? [];
+  ge.cobrancas = co.data ?? [];
+  desenharPlanos();
+  desenharAssinaturas();
+}
+
+function desenharPlanos() {
+  const tb = $("#tb-planos");
+  if (!ge.planos.length) {
+    tb.innerHTML = "<tr><td colspan='7' class='vazio'>Nenhum plano ainda. Crie o primeiro em + Novo plano.</td></tr>";
+    return;
+  }
+  tb.innerHTML = ge.planos.map((p) => {
+    const quantos = ge.assinaturas.filter((a) => a.plan_id === p.id).length;
+    return "<tr><td><b>" + escapar(p.nome) + "</b>" +
+      (p.descricao ? "<div class='mini'>" + escapar(p.descricao) + "</div>" : "") +
+      (p.ativo ? "" : " <span class='pill cinza'>inativo</span>") + "</td>" +
+      "<td><span class='pill " + (p.modalidade === "online" ? "azul" : "verde") + "'>" + p.modalidade + "</span></td>" +
+      "<td class='num'><b>" + reais(p.valor_centavos) + "</b></td>" +
+      "<td class='mini'>" + (PERIODOS[p.periodicidade] ?? p.periodicidade) + "</td>" +
+      "<td class='mini'>" + (p.sessoes_semana ? p.sessoes_semana + "×" : "—") + "</td>" +
+      "<td class='mini'>" + (quantos || "nenhum") + "</td>" +
+      "<td><button class='btn ghost sm' data-pled='" + p.id + "'>editar</button></td></tr>";
+  }).join("");
+  $$("[data-pled]").forEach((b) => b.addEventListener("click", () => formPlano(ge.planos.find((p) => p.id === b.dataset.pled))));
+}
+
+function formPlano(p) {
+  abrirModal("<h3>" + (p ? "Editar plano" : "Novo plano") + "</h3>" +
+    "<p class='desc'>A modalidade separa a receita nas duas planilhas do financeiro.</p>" +
+    "<label class='campo'><span>Nome do plano</span><input id='pf-nome' maxlength='60' placeholder='Presencial 3x por semana' value='" + escapar(p?.nome ?? "") + "'></label>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Modalidade</span><select id='pf-mod'>" +
+        ["presencial", "online"].map((m) => "<option value='" + m + "'" + (p?.modalidade === m ? " selected" : "") + ">" + m + "</option>").join("") +
+      "</select></label>" +
+      "<label class='campo'><span>Valor (R$)</span><input id='pf-valor' inputmode='decimal' placeholder='450,00' value='" + (p ? (p.valor_centavos / 100).toFixed(2).replace(".", ",") : "") + "'></label>" +
+      "<label class='campo'><span>Cobrança</span><select id='pf-per'>" +
+        Object.entries(PERIODOS).map(([k, v]) => "<option value='" + k + "'" + (p?.periodicidade === k ? " selected" : "") + ">" + v + "</option>").join("") +
+      "</select></label>" +
+    "</div>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Sessões por semana</span><input type='number' id='pf-ses' min='0' max='14' value='" + (p?.sessoes_semana ?? "") + "'></label>" +
+      "<label class='campo'><span>Ativo</span><select id='pf-ativo'>" +
+        "<option value='1'" + (p && !p.ativo ? "" : " selected") + ">sim</option>" +
+        "<option value='0'" + (p && !p.ativo ? " selected" : "") + ">não</option></select></label>" +
+    "</div>" +
+    "<label class='campo'><span>Descrição (opcional)</span><input id='pf-desc' maxlength='120' value='" + escapar(p?.descricao ?? "") + "'></label>" +
+    "<div id='pf-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='pf-cancelar'>Cancelar</button>" +
+    (p ? "<button class='btn perigo' id='pf-apagar'>Apagar</button>" : "") +
+    "<button class='btn' id='pf-salvar'>Salvar plano</button></div>");
+  $("#pf-cancelar").addEventListener("click", fecharModal);
+  $("#pf-apagar")?.addEventListener("click", async () => {
+    const r = await comTratamento(sb.from("plans").delete().eq("id", p.id),
+      "Não consegui apagar. Se algum aluno já está nesse plano, desative em vez de apagar.");
+    if (!r.ok) return;
+    fecharModal(); bom("Plano apagado"); carregarPlanos();
+  });
+  $("#pf-salvar").addEventListener("click", async () => {
+    const nome = $("#pf-nome").value.trim();
+    const valor = paraCentavos($("#pf-valor").value);
+    if (!nome || valor === null) { $("#pf-erro").textContent = "Preencha o nome e o valor."; $("#pf-erro").hidden = false; return; }
+    const linha = { treinador_id: estado.usuario.id, nome, modalidade: $("#pf-mod").value,
+      valor_centavos: valor, periodicidade: $("#pf-per").value,
+      sessoes_semana: parseInt($("#pf-ses").value) || null,
+      descricao: $("#pf-desc").value.trim() || null, ativo: $("#pf-ativo").value === "1" };
+    const r = p
+      ? await comTratamento(sb.from("plans").update(linha).eq("id", p.id).select().single(), "Não consegui salvar")
+      : await comTratamento(sb.from("plans").insert(linha).select().single(), "Não consegui salvar");
+    if (!r.ok) return;
+    fecharModal(); bom("Plano salvo"); carregarPlanos();
+  });
+}
+
+/* ---------- alunos nos planos ---------- */
+function situacaoDo(alunoId) {
+  const hoje = hojeIso();
+  const minhas = ge.cobrancas.filter((c) => c.aluno_id === alunoId && c.subscription_id);
+  const atrasadas = minhas.filter((c) => c.status === "pendente" && c.vencimento < hoje);
+  const sub = ge.assinaturas.find((a) => a.aluno_id === alunoId);
+  const carencia = sub?.carencia_dias ?? 1;
+  const bloqueia = atrasadas.some((c) => {
+    const limite = dataDe(c.vencimento); limite.setDate(limite.getDate() + carencia);
+    return isoDia(limite) <= hoje;
+  }) && !(sub?.liberado_ate && sub.liberado_ate >= hoje);
+  if (sub?.bloqueio_manual) return { rot: "bloqueado na mão", cls: "vermelho", bloqueia: true, atrasadas };
+  if (bloqueia) return { rot: "bloqueado", cls: "vermelho", bloqueia: true, atrasadas };
+  if (atrasadas.length) return { rot: "atrasado", cls: "ambar", bloqueia: false, atrasadas };
+  return { rot: "em dia", cls: "verde", bloqueia: false, atrasadas };
+}
+
+function desenharAssinaturas() {
+  const tb = $("#tb-assinaturas");
+  if (!ge.assinaturas.length) {
+    tb.innerHTML = "<tr><td colspan='6' class='vazio'>Nenhum aluno em plano ainda.</td></tr>";
+    return;
+  }
+  tb.innerHTML = ge.assinaturas.map((a) => {
+    const p = ge.planos.find((x) => x.id === a.plan_id);
+    const minhas = ge.cobrancas.filter((c) => c.subscription_id === a.id);
+    const pagas = minhas.filter((c) => c.status === "pago").length;
+    const pend = minhas.filter((c) => c.status === "pendente").length;
+    const s = situacaoDo(a.aluno_id);
+    return "<tr><td><div class='quem-cel'><div class='av'>" + escapar(iniciais(nomeAluno(a.aluno_id))) + "</div><b>" +
+      escapar(nomeAluno(a.aluno_id)) + "</b></div></td>" +
+      "<td>" + escapar(p?.nome ?? "—") + "<div class='mini'>" + (p ? reais(p.valor_centavos) + " · " + p.modalidade : "") + "</div></td>" +
+      "<td class='mini'>dia " + a.dia_vencimento + "<div class='mini'>trava " + a.carencia_dias + " dia(s) depois</div></td>" +
+      "<td><span class='pill " + s.cls + "'>" + s.rot + "</span></td>" +
+      "<td class='mini'>" + pagas + " paga(s) · " + pend + " em aberto</td>" +
+      "<td><button class='btn ghost sm' data-ased='" + a.id + "'>abrir</button></td></tr>";
+  }).join("");
+  $$("[data-ased]").forEach((b) => b.addEventListener("click", () => abrirAssinatura(ge.assinaturas.find((a) => a.id === b.dataset.ased))));
+}
+
+function formAssinatura() {
+  if (!estado.alunos.length) return erro("Cadastre um aluno primeiro");
+  const ativos = ge.planos.filter((p) => p.ativo);
+  if (!ativos.length) return erro("Crie um plano ativo antes");
+  abrirModal("<h3>Colocar aluno num plano</h3>" +
+    "<p class='desc'>As mensalidades são geradas na hora, do início até o mês que vem.</p>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Aluno</span><select id='af-aluno'>" +
+        estado.alunos.map((a) => "<option value='" + a.id + "'>" + escapar(a.nome) + "</option>").join("") + "</select></label>" +
+      "<label class='campo'><span>Plano</span><select id='af-plano'>" +
+        ativos.map((p) => "<option value='" + p.id + "'>" + escapar(p.nome) + " — " + reais(p.valor_centavos) + "</option>").join("") + "</select></label>" +
+    "</div>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Começa em</span><input type='date' id='af-inicio' value='" + hojeIso() + "'></label>" +
+      "<label class='campo'><span>Vence todo dia</span><input type='number' id='af-dia' min='1' max='28' value='5'></label>" +
+      "<label class='campo'><span>Trava depois de (dias)</span><input type='number' id='af-car' min='0' max='60' value='1'></label>" +
+    "</div>" +
+    "<div id='af-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='af-cancelar'>Cancelar</button>" +
+    "<button class='btn' id='af-salvar'>Criar e gerar mensalidades</button></div>");
+  $("#af-cancelar").addEventListener("click", fecharModal);
+  $("#af-salvar").addEventListener("click", async () => {
+    const linha = { treinador_id: estado.usuario.id, aluno_id: $("#af-aluno").value, plan_id: $("#af-plano").value,
+      inicio: $("#af-inicio").value || hojeIso(), dia_vencimento: parseInt($("#af-dia").value) || 5,
+      carencia_dias: Math.max(0, parseInt($("#af-car").value) || 0) };
+    const r = await comTratamento(sb.from("subscriptions").insert(linha).select().single(), "Não consegui criar");
+    if (!r.ok) return;
+    const g = await comTratamento(sb.rpc("gerar_cobrancas", { _subscription: r.data.id }), "Não consegui gerar as mensalidades");
+    fecharModal();
+    bom(g.ok ? "Pronto: " + (g.data ?? 0) + " mensalidade(s) geradas" : "Assinatura criada");
+    carregarPlanos();
+  });
+}
+
+async function abrirAssinatura(a) {
+  const p = ge.planos.find((x) => x.id === a.plan_id);
+  const s = situacaoDo(a.aluno_id);
+  const minhas = ge.cobrancas.filter((c) => c.subscription_id === a.id)
+    .sort((x, y) => y.vencimento.localeCompare(x.vencimento)).slice(0, 12);
+  abrirModal("<h3>" + escapar(nomeAluno(a.aluno_id)) + "</h3>" +
+    "<p class='desc'>" + escapar(p?.nome ?? "") + " · " + reais(p?.valor_centavos) + " · vence todo dia " + a.dia_vencimento +
+      " · <span class='pill " + s.cls + "'>" + s.rot + "</span></p>" +
+    "<div class='card pad0 rolagem'><table><thead><tr><th>Competência</th><th>Vence</th><th class='num'>Valor</th><th>Situação</th><th></th></tr></thead><tbody>" +
+    (minhas.length ? minhas.map((c) => {
+      const venceu = c.status === "pendente" && c.vencimento < hojeIso();
+      return "<tr><td class='mini'>" + MESES[dataDe(c.competencia).getMonth()].slice(0, 3) + "/" + dataDe(c.competencia).getFullYear() + "</td>" +
+        "<td class='mini" + (venceu ? " venceu" : "") + "'>" + dataDe(c.vencimento).toLocaleDateString("pt-BR") + "</td>" +
+        "<td class='num'>" + reais(c.valor_centavos) + "</td>" +
+        "<td><span class='pill " + (c.status === "pago" ? "verde" : venceu ? "vermelho" : "ambar") + "'>" + c.status + "</span></td>" +
+        "<td>" + (c.status === "pendente" ? "<button class='btn ghost sm' data-cobpg='" + c.id + "'>dar baixa</button>" : "") + "</td></tr>";
+    }).join("") : "<tr><td colspan='5' class='vazio'>Sem mensalidades.</td></tr>") +
+    "</tbody></table></div>" +
+    "<div class='acoes'>" +
+      "<button class='btn ghost' id='as-fechar'>Fechar</button>" +
+      "<button class='btn ghost' id='as-gerar'>Gerar próximas</button>" +
+      (s.bloqueia ? "<button class='btn ghost' id='as-liberar'>Liberar por 7 dias</button>" : "") +
+      "<button class='btn " + (a.bloqueio_manual ? "" : "perigo") + "' id='as-trava'>" +
+        (a.bloqueio_manual ? "Tirar o bloqueio manual" : "Bloquear na mão") + "</button>" +
+      "<button class='btn perigo' id='as-encerrar'>Encerrar plano</button>" +
+    "</div>");
+  $("#as-fechar").addEventListener("click", fecharModal);
+  $$("[data-cobpg]").forEach((b) => b.addEventListener("click", () => darBaixa(b.dataset.cobpg, () => { fecharModal(); carregarPlanos(); })));
+  $("#as-gerar").addEventListener("click", async () => {
+    const g = await comTratamento(sb.rpc("gerar_cobrancas", { _subscription: a.id }), "Não consegui gerar");
+    if (!g.ok) return;
+    fecharModal(); bom((g.data ?? 0) + " nova(s) mensalidade(s)"); carregarPlanos();
+  });
+  $("#as-liberar")?.addEventListener("click", async () => {
+    const ate = new Date(); ate.setDate(ate.getDate() + 7);
+    const r = await comTratamento(sb.from("subscriptions").update({ liberado_ate: isoDia(ate) }).eq("id", a.id), "Não consegui liberar");
+    if (!r.ok) return;
+    fecharModal(); bom("Liberado até " + ate.toLocaleDateString("pt-BR")); carregarPlanos();
+  });
+  $("#as-trava").addEventListener("click", async () => {
+    const r = await comTratamento(sb.from("subscriptions").update({ bloqueio_manual: !a.bloqueio_manual }).eq("id", a.id), "Não consegui salvar");
+    if (!r.ok) return;
+    fecharModal(); bom(a.bloqueio_manual ? "Bloqueio manual removido" : "Aluno bloqueado"); carregarPlanos();
+  });
+  $("#as-encerrar").addEventListener("click", async () => {
+    const r = await comTratamento(sb.from("subscriptions").update({ status: "encerrada" }).eq("id", a.id), "Não consegui encerrar");
+    if (!r.ok) return;
+    fecharModal(); bom("Plano encerrado"); carregarPlanos();
+  });
+}
+
+async function darBaixa(id, depois) {
+  const r = await comTratamento(
+    sb.from("charges").update({ status: "pago", pago_em: new Date().toISOString(), metodo: "manual" }).eq("id", id).select().single(),
+    "Não consegui dar baixa");
+  if (!r.ok) return;
+  bom("Mensalidade quitada");
+  depois?.();
+}
+
+/* =========================================================
+   FINANCEIRO — duas planilhas (online e presencial), as saídas
+   e o total do mês. Mensalidade entra pela modalidade do plano;
+   entrada avulsa entra pela modalidade que você escolher.
+   ========================================================= */
+$("#fi-ant").addEventListener("click", () => { ge.mes.setMonth(ge.mes.getMonth() - 1); carregarFinanceiro(); });
+$("#fi-prox").addEventListener("click", () => { ge.mes.setMonth(ge.mes.getMonth() + 1); carregarFinanceiro(); });
+$("#fi-mes").addEventListener("click", () => { ge.mes = new Date(); ge.mes.setDate(1); carregarFinanceiro(); });
+$("#fi-entrada").addEventListener("click", () => formLancamento("entrada"));
+$("#fi-saida").addEventListener("click", () => formLancamento("saida"));
+
+async function carregarFinanceiro() {
+  ge.mes ??= (() => { const d = new Date(); d.setDate(1); d.setHours(12, 0, 0, 0); return d; })();
+  const ini = isoDia(new Date(ge.mes.getFullYear(), ge.mes.getMonth(), 1, 12));
+  const fim = isoDia(new Date(ge.mes.getFullYear(), ge.mes.getMonth() + 1, 0, 12));
+  $("#fi-titulo").textContent = MESES[ge.mes.getMonth()][0].toUpperCase() + MESES[ge.mes.getMonth()].slice(1) + " de " + ge.mes.getFullYear();
+
+  const [co, la, pl] = await Promise.all([
+    sb.from("charges").select("*").gte("vencimento", ini).lte("vencimento", fim).order("vencimento"),
+    sb.from("finance_entries").select("*").gte("data", ini).lte("data", fim).order("data"),
+    ge.planos.length ? Promise.resolve({ data: ge.planos }) : sb.from("plans").select("*"),
+  ]);
+  ge.cobrancas = co.data ?? [];
+  ge.lancamentos = la.data ?? [];
+  ge.planos = pl.data ?? ge.planos;
+  desenharFinanceiro();
+}
+
+function linhasDaModalidade(mod) {
+  const cobrancas = ge.cobrancas.filter((c) => c.modalidade === mod).map((c) => ({
+    tipo: "cobranca", id: c.id, dia: c.vencimento, quem: nomeAluno(c.aluno_id),
+    plano: ge.planos.find((p) => p.id === c.plan_id)?.nome ?? "Mensalidade",
+    status: c.status, valor: c.valor_centavos, vencido: c.status === "pendente" && c.vencimento < hojeIso(),
+  }));
+  const avulsas = ge.lancamentos.filter((l) => l.tipo === "entrada" && l.modalidade === mod).map((l) => ({
+    tipo: "lancamento", id: l.id, dia: l.data, quem: l.aluno_id ? nomeAluno(l.aluno_id) : l.descricao,
+    plano: l.aluno_id ? l.descricao : (l.categoria ?? "avulso"), status: "pago", valor: l.valor_centavos, vencido: false,
+  }));
+  return [...cobrancas, ...avulsas].sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
+function desenharTabelaModalidade(mod) {
+  const linhas = linhasDaModalidade(mod);
+  const recebido = linhas.filter((l) => l.status === "pago").reduce((s, l) => s + l.valor, 0);
+  const aReceber = linhas.filter((l) => l.status === "pendente").reduce((s, l) => s + l.valor, 0);
+  const tb = $("#tb-fi-" + mod);
+  tb.innerHTML = linhas.length ? linhas.map((l) =>
+    "<tr><td class='mini'>" + dataDe(l.dia).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + "</td>" +
+    "<td><b>" + escapar(l.quem) + "</b></td>" +
+    "<td class='mini'>" + escapar(l.plano) + "</td>" +
+    "<td><span class='pill " + (l.status === "pago" ? "verde" : l.vencido ? "vermelho" : "ambar") + "'>" +
+      (l.status === "pago" ? "recebido" : l.vencido ? "vencido" : "a receber") + "</span></td>" +
+    "<td class='num'>" + reais(l.valor) + "</td>" +
+    "<td>" + (l.tipo === "cobranca" && l.status === "pendente"
+      ? "<button class='btn ghost sm' data-fipg='" + l.id + "'>dar baixa</button>"
+      : l.tipo === "lancamento" ? "<button class='btn ghost sm' data-fidel='" + l.id + "'>apagar</button>" : "") + "</td></tr>").join("")
+    : "<tr><td colspan='6' class='vazio'>Nada lançado em " + mod + " neste mês.</td></tr>";
+  $("#tf-fi-" + mod).innerHTML =
+    "<tr><td colspan='4'>Recebido em " + mod + "</td><td class='num'>" + reais(recebido) + "</td><td></td></tr>" +
+    (aReceber ? "<tr><td colspan='4' class='mini'>Ainda a receber</td><td class='num mini'>" + reais(aReceber) + "</td><td></td></tr>" : "");
+  $("#fi-sub-" + mod).textContent = linhas.length + (linhas.length === 1 ? " lançamento" : " lançamentos") +
+    " · " + reais(recebido) + " recebido" + (aReceber ? " · " + reais(aReceber) + " a receber" : "");
+  return { recebido, aReceber };
+}
+
+function desenharFinanceiro() {
+  const on = desenharTabelaModalidade("online");
+  const pre = desenharTabelaModalidade("presencial");
+
+  const saidas = ge.lancamentos.filter((l) => l.tipo === "saida");
+  const totalSaida = saidas.reduce((s, l) => s + l.valor_centavos, 0);
+  $("#tb-fi-saida").innerHTML = saidas.length ? saidas.map((l) =>
+    "<tr><td class='mini'>" + dataDe(l.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + "</td>" +
+    "<td><b>" + escapar(l.descricao) + "</b></td>" +
+    "<td class='mini'>" + escapar(l.categoria ?? "—") + "</td><td></td>" +
+    "<td class='num'>− " + reais(l.valor_centavos) + "</td>" +
+    "<td><button class='btn ghost sm' data-fidel='" + l.id + "'>apagar</button></td></tr>").join("")
+    : "<tr><td colspan='6' class='vazio'>Nenhuma despesa neste mês.</td></tr>";
+  $("#tf-fi-saida").innerHTML = "<tr><td colspan='4'>Total de saídas</td><td class='num'>− " + reais(totalSaida) + "</td><td></td></tr>";
+  $("#fi-sub-saida").textContent = saidas.length + (saidas.length === 1 ? " despesa" : " despesas") + " · " + reais(totalSaida);
+
+  const recebido = on.recebido + pre.recebido;
+  const aReceber = on.aReceber + pre.aReceber;
+  const saldo = recebido - totalSaida;
+  $("#fi-resumo").innerHTML =
+    "<div class='stat'><div class='v'>" + reais(on.recebido) + "</div><div class='l'>Recebido online</div>" +
+      "<div class='d mini'>" + (on.aReceber ? reais(on.aReceber) + " a receber" : "tudo em dia") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + reais(pre.recebido) + "</div><div class='l'>Recebido presencial</div>" +
+      "<div class='d mini'>" + (pre.aReceber ? reais(pre.aReceber) + " a receber" : "tudo em dia") + "</div></div>" +
+    "<div class='stat'><div class='v'>" + reais(totalSaida) + "</div><div class='l'>Saídas do mês</div></div>" +
+    "<div class='stat'><div class='v'>" + reais(saldo) + "</div><div class='l'>Sobrou no mês</div>" +
+      "<div class='d mini'>recebido − saídas</div></div>";
+  $("#fi-total").innerHTML =
+    "<div><span>Online</span><b>" + reais(on.recebido) + "</b></div>" +
+    "<div><span>+ Presencial</span><b>" + reais(pre.recebido) + "</b></div>" +
+    "<div><span>= Entrou no mês</span><b>" + reais(recebido) + "</b></div>" +
+    "<div><span>− Saídas</span><b>" + reais(totalSaida) + "</b></div>" +
+    "<div class='saldo" + (saldo < 0 ? " negativo" : "") + "'><span>Saldo</span><b>" + reais(saldo) + "</b></div>" +
+    (aReceber ? "<div><span>Ainda a receber</span><b>" + reais(aReceber) + "</b></div>" : "");
+
+  $$("[data-fipg]").forEach((b) => b.addEventListener("click", () => darBaixa(b.dataset.fipg, carregarFinanceiro)));
+  $$("[data-fidel]").forEach((b) => b.addEventListener("click", async () => {
+    const r = await comTratamento(sb.from("finance_entries").delete().eq("id", b.dataset.fidel), "Não consegui apagar");
+    if (r.ok) { bom("Lançamento apagado"); carregarFinanceiro(); }
+  }));
+}
+
+function formLancamento(tipo) {
+  const entrada = tipo === "entrada";
+  abrirModal("<h3>" + (entrada ? "Entrada avulsa" : "Despesa") + "</h3>" +
+    "<p class='desc'>" + (entrada ? "Avaliação física, diária, consultoria pontual — o que não é mensalidade."
+                                  : "Aluguel de sala, material, transporte, taxa do Mercado Pago…") + "</p>" +
+    "<label class='campo'><span>Descrição</span><input id='lf-desc' maxlength='80' placeholder='" +
+      (entrada ? "Avaliação física" : "Aluguel da sala") + "'></label>" +
+    "<div class='linha'>" +
+      "<label class='campo'><span>Valor (R$)</span><input id='lf-valor' inputmode='decimal' placeholder='150,00'></label>" +
+      "<label class='campo'><span>Data</span><input type='date' id='lf-data' value='" + hojeIso() + "'></label>" +
+      (entrada
+        ? "<label class='campo'><span>Modalidade</span><select id='lf-mod'><option value='presencial'>presencial</option><option value='online'>online</option></select></label>"
+        : "<label class='campo'><span>Categoria</span><input id='lf-cat' maxlength='40' placeholder='estrutura'></label>") +
+    "</div>" +
+    (entrada ? "<label class='campo'><span>Aluno (opcional)</span><select id='lf-aluno'><option value=''>— ninguém específico —</option>" +
+      estado.alunos.map((a) => "<option value='" + a.id + "'>" + escapar(a.nome) + "</option>").join("") + "</select></label>" : "") +
+    "<div id='lf-erro' class='erro' hidden></div>" +
+    "<div class='acoes'><button class='btn ghost' id='lf-cancelar'>Cancelar</button>" +
+    "<button class='btn' id='lf-salvar'>Lançar</button></div>");
+  $("#lf-cancelar").addEventListener("click", fecharModal);
+  $("#lf-salvar").addEventListener("click", async () => {
+    const desc = $("#lf-desc").value.trim();
+    const valor = paraCentavos($("#lf-valor").value);
+    if (!desc || valor === null) { $("#lf-erro").textContent = "Preencha a descrição e o valor."; $("#lf-erro").hidden = false; return; }
+    const linha = { treinador_id: estado.usuario.id, tipo, descricao: desc, valor_centavos: valor,
+      data: $("#lf-data").value || hojeIso(),
+      modalidade: entrada ? $("#lf-mod").value : null,
+      categoria: entrada ? "avulso" : ($("#lf-cat").value.trim() || null),
+      aluno_id: entrada ? ($("#lf-aluno").value || null) : null };
+    const r = await comTratamento(sb.from("finance_entries").insert(linha).select().single(), "Não consegui lançar");
+    if (!r.ok) return;
+    fecharModal(); bom("Lançado"); carregarFinanceiro();
+  });
+}
+
+/* =========================================================
+   LADO DO ALUNO — mensalidade e a trava por atraso.
+   Quem manda é o banco: aluno_bloqueado() já corta o acesso aos
+   treinos na RLS. Esta tela só explica e oferece o Pix.
+   ========================================================= */
+const pgA = { acesso: null, relogio: null };
+
+async function verificarAcesso() {
+  const r = await sb.rpc("meu_acesso");
+  pgA.acesso = r.data ?? null;
+  const bloqueado = !!pgA.acesso?.bloqueado;
+  const tela = $("#bloqueio");
+  if (tela) tela.hidden = !bloqueado;
+  if (bloqueado) {
+    const devido = pgA.acesso?.total_devido_centavos ?? 0;
+    $("#bl-texto").textContent = "São " + reais(devido) + " em aberto. Assim que o pagamento cair, seu treino volta na hora.";
+    desenharCobrancasAluno($("#bl-lista"));
+    clearInterval(pgA.relogio);
+    pgA.relogio = setInterval(conferirPagamento, 15000);   // o Pix cai sozinho pelo Mercado Pago
+  } else {
+    clearInterval(pgA.relogio);
+  }
+  return bloqueado;
+}
+
+async function conferirPagamento() {
+  const r = await sb.rpc("meu_acesso");
+  if (r.data && !r.data.bloqueado) {
+    clearInterval(pgA.relogio);
+    $("#bloqueio").hidden = true;
+    bom("Pagamento confirmado. Bom treino!");
+    iniciarAluno();
+  }
+}
+
+async function desenharCobrancasAluno(alvo) {
+  if (!alvo) return;
+  const r = await sb.from("charges").select("*").order("vencimento", { ascending: false }).limit(12);
+  const todas = r.data ?? [];
+  const abertas = todas.filter((c) => c.status === "pendente");
+  if (!abertas.length) {
+    alvo.innerHTML = "<p class='vazio'>Nenhuma mensalidade em aberto. Está tudo certo!</p>" +
+      (todas.length ? "<div class='mini' style='margin-top:10px'>Última paga: " +
+        dataDe(todas.find((c) => c.status === "pago")?.vencimento ?? todas[0].vencimento).toLocaleDateString("pt-BR") + "</div>" : "");
+    return;
+  }
+  alvo.innerHTML = abertas.map((c) => {
+    const venceu = c.vencimento < hojeIso();
+    return "<div class='cob' data-cob='" + c.id + "'>" +
+      "<div class='topo'><span class='valor'>" + reais(c.valor_centavos) + "</span>" +
+      "<span class='quando" + (venceu ? " venceu" : "") + "'>" + (venceu ? "venceu em " : "vence em ") +
+        dataDe(c.vencimento).toLocaleDateString("pt-BR") + "</span></div>" +
+      "<button class='btn' data-pagar='" + c.id + "'>Pagar com Pix</button>" +
+      "<div class='pix-caixa' id='pix-" + c.id + "' hidden></div></div>";
+  }).join("");
+  $$("[data-pagar]").forEach((b) => b.addEventListener("click", () => gerarPix(b.dataset.pagar, b)));
+}
+
+async function gerarPix(idCobranca, botao) {
+  botao.disabled = true;
+  botao.textContent = "Gerando o Pix…";
+  const r = await sb.functions.invoke("mp-cobranca", { body: { charge_id: idCobranca } });
+  botao.disabled = false;
+  botao.textContent = "Pagar com Pix";
+  const dados = r.data;
+  if (r.error || !dados || dados.erro) {
+    const motivo = dados?.erro ?? "";
+    if (motivo === "mp_nao_configurado")
+      return aviso("O pagamento pelo app ainda não está ligado. Fale com seu treinador para combinar o pagamento.");
+    return erro("Não consegui gerar o Pix agora. Tente de novo em instantes.");
+  }
+  const caixa = $("#pix-" + idCobranca);
+  caixa.hidden = false;
+  caixa.innerHTML =
+    (dados.pix_qr ? "<img alt='QR Code do Pix' src='data:image/png;base64," + dados.pix_qr + "'>" : "") +
+    "<div class='pix-codigo' id='pixtxt-" + idCobranca + "'>" + escapar(dados.pix_copia ?? "") + "</div>" +
+    "<button class='btn ghost' data-copiar='" + idCobranca + "' style='width:100%;margin-top:10px'>Copiar o código Pix</button>" +
+    "<div class='mini' style='margin-top:8px;text-align:center'>A liberação é automática assim que o Pix cair.</div>";
+  $$("[data-copiar]").forEach((b) => b.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(dados.pix_copia ?? "");
+      bom("Código copiado");
+    } catch { aviso("Copie o código na mão, tocando e segurando."); }
+  }));
+  clearInterval(pgA.relogio);
+  pgA.relogio = setInterval(conferirPagamento, 10000);
+}
+
+$("#bl-sair")?.addEventListener("click", () => sb.auth.signOut().then(() => location.reload()));
