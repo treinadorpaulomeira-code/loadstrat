@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./estilo.css?v=15">
+<link rel="stylesheet" href="./estilo.css?v=16">
 </head>
 <body>
 
@@ -86,6 +86,10 @@
     <button class="navitem" data-nav="periodizacao">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 17h8"/></svg>
       <span class="rot-l">Periodização</span><span class="rot-c">Plano</span>
+    </button>
+    <button class="navitem" data-nav="gestao">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>
+      Gestão
     </button>
     <button class="navitem" data-nav="biblioteca">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
@@ -304,6 +308,99 @@
       </div>
     </section>
 
+    <!-- GESTÃO: agenda, planos e financeiro -->
+    <section class="page" data-page="gestao">
+      <header class="topbar">
+        <div><h1>Gestão</h1><div class="sub">Sua agenda, seus planos e o dinheiro do mês</div></div>
+      </header>
+      <div class="conteudo">
+        <div class="ge-abas">
+          <button class="ge-aba on" data-ge="agenda">Agenda</button>
+          <button class="ge-aba" data-ge="planos">Planos e alunos</button>
+          <button class="ge-aba" data-ge="financeiro">Financeiro</button>
+        </div>
+
+        <!-- ---------- AGENDA ---------- -->
+        <div class="ge-painel on" data-gp="agenda">
+          <div class="sechd">
+            <h2 id="ag-titulo">Semana</h2>
+            <div class="ag-nav">
+              <button class="btn ghost sm" id="ag-ant" title="Semana anterior">‹</button>
+              <button class="btn ghost sm" id="ag-hoje">Hoje</button>
+              <button class="btn ghost sm" id="ag-prox" title="Próxima semana">›</button>
+              <button class="btn ghost sm" id="ag-fixos">Horários fixos</button>
+              <button class="btn sm" id="ag-encaixe">+ Encaixe</button>
+            </div>
+          </div>
+          <div class="grid g4" id="ag-resumo"></div>
+          <div class="ag-semana" id="ag-semana"><div class="carregando">Carregando a agenda…</div></div>
+        </div>
+
+        <!-- ---------- PLANOS ---------- -->
+        <div class="ge-painel" data-gp="planos">
+          <div class="sechd"><h2>Planos que você vende</h2><button class="btn sm" id="pl-novo">+ Novo plano</button></div>
+          <div class="card pad0 rolagem">
+            <table>
+              <thead><tr><th>Plano</th><th>Modalidade</th><th>Valor</th><th>Cobrança</th><th>Sessões/semana</th><th>Alunos</th><th></th></tr></thead>
+              <tbody id="tb-planos"><tr><td colspan="7" class="vazio">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="sechd"><h2>Alunos nos planos</h2><button class="btn sm" id="as-nova">+ Colocar aluno num plano</button></div>
+          <div class="card pad0 rolagem">
+            <table>
+              <thead><tr><th>Aluno</th><th>Plano</th><th>Vencimento</th><th>Situação</th><th>Mensalidades</th><th></th></tr></thead>
+              <tbody id="tb-assinaturas"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ---------- FINANCEIRO ---------- -->
+        <div class="ge-painel" data-gp="financeiro">
+          <div class="sechd">
+            <h2 id="fi-titulo">Mês</h2>
+            <div class="ag-nav">
+              <button class="btn ghost sm" id="fi-ant" title="Mês anterior">‹</button>
+              <button class="btn ghost sm" id="fi-mes">Este mês</button>
+              <button class="btn ghost sm" id="fi-prox" title="Próximo mês">›</button>
+              <button class="btn ghost sm" id="fi-saida">+ Despesa</button>
+              <button class="btn sm" id="fi-entrada">+ Entrada avulsa</button>
+            </div>
+          </div>
+          <div class="grid g4" id="fi-resumo"></div>
+
+          <div class="sechd"><h2>Online</h2><span class="mini" id="fi-sub-online">—</span></div>
+          <div class="card pad0 rolagem">
+            <table>
+              <thead><tr><th>Dia</th><th>Quem / o quê</th><th>Plano</th><th>Situação</th><th class="num">Valor</th><th></th></tr></thead>
+              <tbody id="tb-fi-online"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+              <tfoot id="tf-fi-online"></tfoot>
+            </table>
+          </div>
+
+          <div class="sechd"><h2>Presencial</h2><span class="mini" id="fi-sub-presencial">—</span></div>
+          <div class="card pad0 rolagem">
+            <table>
+              <thead><tr><th>Dia</th><th>Quem / o quê</th><th>Plano</th><th>Situação</th><th class="num">Valor</th><th></th></tr></thead>
+              <tbody id="tb-fi-presencial"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+              <tfoot id="tf-fi-presencial"></tfoot>
+            </table>
+          </div>
+
+          <div class="sechd"><h2>Saídas</h2><span class="mini" id="fi-sub-saida">—</span></div>
+          <div class="card pad0 rolagem">
+            <table>
+              <thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th></th><th class="num">Valor</th><th></th></tr></thead>
+              <tbody id="tb-fi-saida"><tr><td colspan="6" class="vazio">Carregando…</td></tr></tbody>
+              <tfoot id="tf-fi-saida"></tfoot>
+            </table>
+          </div>
+
+          <div class="fi-total" id="fi-total"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="page" data-page="periodizacao">
       <header class="topbar">
         <div><h1>Periodização</h1><div class="sub">Macrociclo por esporte: fases, capacidades e carga planejada</div></div>
@@ -440,6 +537,12 @@
       <div id="prog-corpo"><div class="carregando">Carregando…</div></div>
     </section>
 
+    <!-- MENSALIDADE -->
+    <section class="tela-aluno" data-tela="pagamento">
+      <div class="ola-bloco"><h1>Mensalidade</h1><p>Suas cobranças e o pagamento por Pix</p></div>
+      <div id="pg-lista"><div class="carregando">Carregando…</div></div>
+    </section>
+
     <!-- HISTÓRICO -->
     <section class="tela-aluno" data-tela="historico">
       <div class="ola-bloco"><h1>Histórico</h1><p>Seus treinos concluídos</p></div>
@@ -462,6 +565,19 @@
       Histórico
     </button>
   </nav>
+
+  <!-- trava por mensalidade vencida: cobre o app do aluno -->
+  <div class="bloqueio" id="bloqueio" hidden>
+    <div class="bl-card">
+      <div class="bl-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+      </div>
+      <h2>Mensalidade em aberto</h2>
+      <p id="bl-texto">Seu acesso aos treinos volta assim que o pagamento for confirmado.</p>
+      <div id="bl-lista"><div class="carregando">Carregando…</div></div>
+      <button class="link-sutil" id="bl-sair">Sair da conta</button>
+    </div>
+  </div>
 
 </div>
 
@@ -503,6 +619,6 @@
 <div class="toast" id="toast"></div>
 <div class="offline" id="offline" hidden>Sem conexão — as mudanças serão salvas quando a internet voltar</div>
 
-<script type="module" src="./app.js?v=15"></script>
+<script type="module" src="./app.js?v=16"></script>
 </body>
 </html>
