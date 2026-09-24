@@ -30,7 +30,9 @@ const db = {
   ],
   workouts: [], session_logs: [], workout_sets: [], checkins: [],
   extra_sessions: [], hidratacao: [], periodization: [],
+  plans: [], subscriptions: [], charges: [], finance_entries: [], schedule_slots: [], appointments: [],
 };
+const diaIsoT = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 function rpcFalso(nome, args) {
   if (nome === "adicionar_agua") {
     let h = db.hidratacao.find((x) => x.aluno_id === usuario && x.data === args._data);
@@ -44,6 +46,32 @@ function rpcFalso(nome, args) {
     const n = Math.floor((Date.now() - new Date(p.inicio + "T12:00:00")) / (7 * 864e5)) + 1;
     return { data: { esporte: p.fases.esporte_nome, inicio: p.inicio, fim: p.fim, semana_atual: n, total: p.fases.semanas.length,
       semanas: p.fases.semanas.map((x) => ({ n: x.n, fase: x.fase, rotulo: x.rotulo, descarga: x.descarga, foco: x.foco_aluno })) }, error: null };
+  }
+  if (nome === "gerar_cobrancas") {
+    const sub = db.subscriptions.find((x) => x.id === args._subscription);
+    if (!sub) return { data: null, error: { message: "sem assinatura" } };
+    const pl = db.plans.find((x) => x.id === sub.plan_id);
+    const comp = sub.inicio.slice(0, 7) + "-01";
+    if (db.charges.some((c) => c.subscription_id === sub.id && c.competencia === comp)) return { data: 0, error: null };
+    db.charges.push({ id: uid(), treinador_id: sub.treinador_id, aluno_id: sub.aluno_id, subscription_id: sub.id,
+      plan_id: pl.id, modalidade: pl.modalidade, competencia: comp,
+      vencimento: comp.slice(0, 8) + String(sub.dia_vencimento).padStart(2, "0"),
+      valor_centavos: pl.valor_centavos, status: "pendente" });
+    return { data: 1, error: null };
+  }
+  if (nome === "meu_acesso") {
+    const hoje = diaIsoT(new Date());
+    const minhas = db.charges.filter((c) => c.aluno_id === usuario && c.status === "pendente");
+    const trava = minhas.some((c) => {
+      const sub = db.subscriptions.find((x) => x.id === c.subscription_id);
+      if (!sub) return false;
+      const lim = new Date(c.vencimento + "T12:00:00");
+      lim.setDate(lim.getDate() + (sub.carencia_dias ?? 1));
+      return diaIsoT(lim) <= hoje;
+    });
+    return { data: { bloqueado: trava, em_atraso: minhas.filter((c) => c.vencimento < hoje).length,
+      a_vencer: minhas.filter((c) => c.vencimento >= hoje).length,
+      total_devido_centavos: minhas.reduce((t, c) => t + c.valor_centavos, 0) }, error: null };
   }
   return null;
 }
@@ -111,7 +139,7 @@ async function abrir(quem) {
     },
     from: (t) => builder(t),
     rpc: async (nome, args) => rpcFalso(nome, args) ?? (w.__rpc ? w.__rpc(nome, args) : { data: null, error: { message: "sem rpc" } }),
-    functions: { invoke: async () => ({ data: {}, error: null }) },
+    functions: { invoke: async (nome, op) => (nome === "mp-cobranca" ? { data: { pix_copia: "00020126PIXFALSO5204", pix_qr: "QVJU", expira_em: new Date(Date.now() + 864e5).toISOString() }, error: null } : { data: {}, error: null }) },
     storage: { from: () => ({
       upload: async (c, f) => { if (w.__uploadFalha) return { data: null, error: { message: "rede" } }; db.arquivos = [...(db.arquivos ?? []), c]; return { data: { path: c }, error: null }; },
       getPublicUrl: (c) => ({ data: { publicUrl: "https://bqprycsbkwrtxsqmskpw.supabase.co/storage/v1/object/public/exercise-videos/" + c } }),
@@ -757,6 +785,110 @@ $(w17, "#ss-fim").click(); await espera(150);
 $(w17, "[data-sspse='4']").click();
 $(w17, "#ss-salvar").click(); await espera(400);
 ok($(w17, "[data-page='perfil']").classList.contains("on"), "encerrando o ultimo, volta para o perfil do aluno");
+
+// ================= GESTAO: planos, agenda e financeiro =================
+let w18 = await abrir(T);
+w18.__rpc = async () => ({ data: { historico_suficiente: false, dias_7: [], carga_28_dias: [], semanas: [] }, error: null });
+await espera(200);
+ok(!!$(w18, "[data-nav='gestao']"), "o painel tem a aba Gestao");
+$(w18, "[data-nav='gestao']").click(); await espera(250);
+ok($(w18, "[data-page='gestao']").classList.contains("on"), "abre a tela de gestao");
+
+// ---- planos ----
+$(w18, "[data-ge='planos']").click(); await espera(200);
+$(w18, "#pl-novo").click(); await espera(100);
+digita(w18, $(w18, "#pf-nome"), "Presencial 3x");
+digita(w18, $(w18, "#pf-valor"), "450,00");
+muda(w18, $(w18, "#pf-mod"), "presencial");
+$(w18, "#pf-salvar").click(); await espera(250);
+ok(db.plans.length === 1 && db.plans[0].valor_centavos === 45000, "valor em reais vira centavos no banco (450,00 -> 45000)");
+$(w18, "#pl-novo").click(); await espera(100);
+digita(w18, $(w18, "#pf-nome"), "Consultoria online");
+digita(w18, $(w18, "#pf-valor"), "R$ 1.250,50");
+muda(w18, $(w18, "#pf-mod"), "online");
+$(w18, "#pf-salvar").click(); await espera(250);
+ok(db.plans.length === 2 && db.plans[1].valor_centavos === 125050, "aceita valor com R$ e ponto de milhar (1.250,50)");
+ok(/Presencial 3x/.test($(w18, "#tb-planos").textContent) && /R\$ 1.250,50/.test($(w18, "#tb-planos").textContent),
+   "os dois planos aparecem na tabela");
+
+// ---- aluno no plano ----
+$(w18, "#as-nova").click(); await espera(150);
+muda(w18, $(w18, "#af-plano"), db.plans[0].id);
+digita(w18, $(w18, "#af-inicio"), diaIsoT(new Date()).slice(0, 8) + "01");
+digita(w18, $(w18, "#af-dia"), "5");
+$(w18, "#af-salvar").click(); await espera(350);
+ok(db.subscriptions.length === 1 && db.charges.length === 1, "colocar no plano ja gera a mensalidade");
+ok(/em dia|atrasado|bloqueado/.test($(w18, "#tb-assinaturas").textContent), "a tabela mostra a situacao do aluno");
+
+// ---- financeiro: duas planilhas e o total ----
+db.charges[0].status = "pago";
+db.charges.push({ id: "c2", treinador_id: T, aluno_id: A, subscription_id: null, plan_id: db.plans[1].id,
+  modalidade: "online", competencia: diaIsoT(new Date()).slice(0, 8) + "01",
+  vencimento: diaIsoT(new Date()), valor_centavos: 125050, status: "pago" });
+db.finance_entries.push({ id: "f1", treinador_id: T, tipo: "saida", descricao: "Aluguel da sala",
+  categoria: "estrutura", data: diaIsoT(new Date()), valor_centavos: 80000 });
+$(w18, "[data-ge='financeiro']").click(); await espera(300);
+const fin = $(w18, "#fi-total").textContent;
+ok(/R\$ 1.250,50/.test($(w18, "#tb-fi-online").textContent), "a planilha online traz so o que e online");
+ok(/R\$ 450,00/.test($(w18, "#tb-fi-presencial").textContent) && !/R\$ 1.250,50/.test($(w18, "#tb-fi-presencial").textContent),
+   "a planilha presencial traz so o presencial");
+ok(/R\$ 1.700,50/.test(fin), "soma as duas no final: 450,00 + 1.250,50 = 1.700,50");
+ok(/R\$ 800,00/.test(fin) && /R\$ 900,50/.test(fin), "desconta a despesa: 1.700,50 - 800,00 = 900,50 de saldo");
+ok(/R\$ 800,00/.test($(w18, "#tb-fi-saida").textContent), "a despesa aparece na planilha de saidas");
+
+// lancamento avulso entra na modalidade escolhida
+$(w18, "#fi-entrada").click(); await espera(120);
+digita(w18, $(w18, "#lf-desc"), "Avaliacao fisica");
+digita(w18, $(w18, "#lf-valor"), "180");
+muda(w18, $(w18, "#lf-mod"), "presencial");
+$(w18, "#lf-salvar").click(); await espera(300);
+ok(/Avaliacao fisica/.test($(w18, "#tb-fi-presencial").textContent) && /R\$ 1.880,50/.test($(w18, "#fi-total").textContent),
+   "entrada avulsa entra na planilha certa e no total");
+
+// ---- agenda ----
+$(w18, "[data-ge='agenda']").click(); await espera(250);
+ok($$(w18, ".ag-dia").length === 7, "a semana tem os sete dias");
+const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
+db.schedule_slots.push({ id: "sl1", treinador_id: T, aluno_id: A, dia_semana: amanha.getDay(), hora: "07:00:00",
+  duracao_min: 60, modalidade: "presencial", local: "Studio", inicio: "2020-01-01", fim: null, ativo: true });
+$(w18, "#ag-hoje").click(); await espera(300);
+ok(/07:00/.test($(w18, "#ag-semana").textContent) && /Ana/.test($(w18, "#ag-semana").textContent),
+   "o horario fixo aparece sozinho na semana");
+const item = $$(w18, "[data-agitem]").find((b) => /07:00/.test(b.textContent));
+item.click(); await espera(150);
+ok(!!$(w18, "[data-agst='presente']"), "clicar no horario oferece presenca e falta");
+$(w18, "[data-agst='presente']").click(); await espera(300);
+ok(db.appointments.length === 1 && db.appointments[0].status === "presente", "marca presenca no banco");
+ok(/presente/.test($(w18, "#ag-semana").textContent) && /1/.test($(w18, "#ag-resumo").textContent),
+   "a semana e o resumo passam a mostrar a presenca");
+$(w18, "#ag-encaixe").click(); await espera(150);
+digita(w18, $(w18, "#en-data"), diaIsoT(new Date()));
+digita(w18, $(w18, "#en-hora"), "18:30");
+$(w18, "#en-salvar").click(); await espera(300);
+ok(db.appointments.length === 2 && /18:30/.test($(w18, "#ag-semana").textContent), "encaixe avulso entra na agenda");
+
+// ================= ALUNO: mensalidade e bloqueio =================
+db.charges.push({ id: "c3", treinador_id: T, aluno_id: A, subscription_id: db.subscriptions[0].id,
+  plan_id: db.plans[0].id, modalidade: "presencial",
+  competencia: diaIsoT(new Date()).slice(0, 8) + "01",
+  vencimento: diaIsoT(new Date(Date.now() - 5 * 864e5)), valor_centavos: 45000, status: "pendente" });
+let w19 = await abrir(A);
+await espera(400);
+ok(!$(w19, "#bloqueio").hidden, "aluno com mensalidade vencida cai na tela de bloqueio");
+ok(/R\$ 450,00/.test($(w19, "#bl-texto").textContent), "a tela diz quanto esta em aberto");
+await espera(200);
+ok(/450,00/.test($(w19, "#bl-lista").textContent) && !!$(w19, "[data-pagar]"), "mostra a cobranca com o botao de pagar");
+$(w19, "[data-pagar]").click(); await espera(300);
+ok(/PIXFALSO/.test($(w19, "#bl-lista").textContent), "gera o Pix e mostra o codigo para copiar");
+ok(!/UA|ACWR|monotonia|strain/i.test($(w19, "#bloqueio").textContent), "a tela de bloqueio nao vaza numero interno");
+
+db.charges.forEach((c) => (c.status = "pago"));
+let w20 = await abrir(A);
+await espera(400);
+ok($(w20, "#bloqueio").hidden, "pagou: o app do aluno abre normalmente");
+ok(!!$(w20, "[data-atalho='pagamento']"), "o aluno em dia tem o atalho da mensalidade");
+$(w20, "[data-atalho='pagamento']").click(); await espera(250);
+ok(/Nenhuma mensalidade em aberto/.test($(w20, "#pg-lista").textContent), "sem pendencia, a tela diz que esta tudo certo");
 
 console.log("\n" + (falhas.length ? falhas.length + " FALHA(S)" : "TUDO PASSOU"));
 process.exit(falhas.length ? 1 : 0);
