@@ -14,8 +14,9 @@ mobile-first para o aluno, sobre o mesmo Supabase e o mesmo login.
   em todas as tabelas e Storage (`exercise-videos`) para os vídeos. No banco fica só a URL.
 - `supabase/migrations/` — todo o schema em ordem. As mesmas migrações estão guardadas no
   próprio Supabase (histórico de migrations).
-- `supabase/functions/criar-aluno` — cria a conta do aluno e o vínculo com o treinador
-  (é o único caminho para criar vínculo; o cliente não insere em `students`).
+- `supabase/functions/` — `criar-aluno` (cria a conta e o vínculo), `mp-cobranca` (gera o Pix
+  de uma mensalidade) e `mp-webhook` (baixa automática). Ver `supabase/functions/LEIA-ME.md`.
+  A chave do Mercado Pago mora só no segredo `MP_ACCESS_TOKEN` do Supabase, nunca no repositório.
 
 ## Regras que não podem ser quebradas
 
@@ -28,6 +29,13 @@ mobile-first para o aluno, sobre o mesmo Supabase e o mesmo login.
 - `exercises.video_url` aceita só link canônico do YouTube ou arquivo do bucket (check no banco).
 - A forma de registro (carga × reps, carga × tempo, carga × distância, só reps, só tempo)
   é de cada exercício **dentro da prescrição**, não do exercício da biblioteca.
+- **Dinheiro é sempre inteiro em centavos** (`valor_centavos`). Nada de float em real.
+- O bloqueio por inadimplência é do **banco**, não da tela: `aluno_bloqueado()` entra nas
+  policies de `workouts` e `session_logs` e no `plano_do_aluno()`. Trava quando
+  `vencimento + carencia_dias <= hoje` e a cobrança segue pendente. O aluno bloqueado
+  continua enxergando as cobranças dele — é como ele paga e se destrava.
+- O `mp-webhook` nunca acredita no aviso que chega: pega só o id e consulta a API do
+  Mercado Pago com a chave do treinador. Aviso forjado não dá baixa em nada.
 - Densidade do exercício (ED) = volume ÷ tempo de recuperação, contando só os intervalos
   **entre séries do mesmo exercício** (N séries → N−1 intervalos). Volume (AVL) = Σ séries ×
   reps × kg; índice de volume (IV) = AVL ÷ massa corporal. Na sessão ao vivo o intervalo vem
@@ -42,9 +50,10 @@ para conferir os cálculos de carga contra a planilha/relatório.
 ## Testes
 
 - `testes/` — teste offline que roda o `index.html` e o `app.js` reais num DOM simulado com um
-  Supabase falso: `node teste.mjs` (175 checagens; precisa de `npm i jsdom`). Cobre ondulação,
+  Supabase falso: `node teste.mjs` (202 checagens; precisa de `npm i jsdom`). Cobre ondulação,
   check-in, vídeos, registro por prescrição, cronômetro, periodização, 1RM, hidratação,
-  calendário, prontidão, progressão e a sessão ao vivo do treinador (inclusive com dois alunos juntos).
+  calendário, prontidão, progressão, a sessão ao vivo (inclusive com dois alunos juntos),
+  a agenda, os planos, o financeiro e o bloqueio por mensalidade vencida.
 - Os testes de permissão (RLS) são feitos por SQL direto no Supabase, simulando cada papel.
 
 ## Fora do escopo (combinado)
